@@ -65,9 +65,9 @@ app.post('/api/auth/register', (req, res, next) => {
 
             try {
                 const userId = this.lastID;
-                const token = jwt.sign({ id: userId, name, email }, SECRET_KEY, { expiresIn: '24h' });
+                const token = jwt.sign({ id: userId, name, email, role: 'user' }, SECRET_KEY, { expiresIn: '24h' });
                 console.log(`Registration successful for ID: ${userId}`);
-                res.status(201).json({ token, user: { id: userId, name, email } });
+                res.status(201).json({ token, user: { id: userId, name, email, role: 'user' } });
             } catch (tokenErr) {
                 next(tokenErr);
             }
@@ -103,9 +103,9 @@ app.post('/api/auth/login', (req, res, next) => {
                 return res.status(401).json({ error: 'Senha incorreta' });
             }
 
-            const token = jwt.sign({ id: user.id, name: user.name, email: user.email }, SECRET_KEY, { expiresIn: '24h' });
-            console.log(`Login successful for user: ${email}`);
-            res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email } });
+            const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
+            console.log(`Login successful for user: ${email} (Role: ${user.role})`);
+            res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
         } catch (authErr) {
             next(authErr);
         }
@@ -127,7 +127,13 @@ app.get('/api/bookings', (req, res) => {
 
 // Get user's bookings
 app.get('/api/my-bookings', authenticateToken, (req, res) => {
-    db.all("SELECT * FROM appointments WHERE user_id = ? ORDER BY date DESC, time DESC", [req.user.id], (err, rows) => {
+    const isAdmin = req.user.role === 'admin';
+    const query = isAdmin
+        ? "SELECT a.*, u.name as user_name FROM appointments a JOIN users u ON a.user_id = u.id ORDER BY a.date DESC, a.time DESC"
+        : "SELECT * FROM appointments WHERE user_id = ? ORDER BY date DESC, time DESC";
+    const params = isAdmin ? [] : [req.user.id];
+
+    db.all(query, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
     });
@@ -161,11 +167,14 @@ app.put('/api/bookings/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { date, time, notes } = req.body;
     const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
 
     db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
-        if (booking.user_id !== userId) return res.status(403).json({ error: 'Não autorizado' });
+
+        // Allowed if owner OR admin
+        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
 
         // Check availability if date/time changed
         db.get("SELECT * FROM appointments WHERE date = ? AND time = ? AND status = 'active' AND id != ?", [date, time, id], (err, existing) => {
@@ -185,11 +194,14 @@ app.put('/api/bookings/:id', authenticateToken, (req, res) => {
 app.delete('/api/bookings/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
 
     db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
-        if (booking.user_id !== userId) return res.status(403).json({ error: 'Não autorizado' });
+
+        // Allowed if owner OR admin
+        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
 
         const stmt = db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?");
         stmt.run([id], function (err) {
@@ -204,11 +216,14 @@ app.delete('/api/bookings/:id', authenticateToken, (req, res) => {
 app.delete('/api/bookings/:id/force', authenticateToken, (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
 
     db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
-        if (booking.user_id !== userId) return res.status(403).json({ error: 'Não autorizado' });
+
+        // Allowed if owner OR admin
+        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
 
         const stmt = db.prepare("DELETE FROM appointments WHERE id = ?");
         stmt.run([id], function (err) {

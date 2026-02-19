@@ -15,13 +15,21 @@ const db = new sqlite3.Database(dbPath, (err) => {
     } else {
         console.log('Connected to the SQLite database.');
 
-        // Create users table
+        // Create users table with role
         db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
-        )`);
+            password TEXT NOT NULL,
+            role TEXT DEFAULT 'user'
+        )`, (err) => {
+            if (!err) {
+                // Try to add role column to existing table if it doesn't exist
+                db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", (alterErr) => {
+                    // Ignore error if column already exists
+                });
+            }
+        });
 
         // Create appointments table
         // Added status column for cancellation (active/cancelled)

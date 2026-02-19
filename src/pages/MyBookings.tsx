@@ -17,7 +17,7 @@ interface Appointment {
 }
 
 export function MyBookings() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const [bookings, setBookings] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingBooking, setEditingBooking] = useState<Appointment | null>(null);
@@ -135,13 +135,15 @@ export function MyBookings() {
     if (loading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-12">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8">
-                <h1 className="text-2xl font-bold mb-6">Gerenciar Meus Agendamentos</h1>
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-12 flex flex-col items-center justify-center">
+            <div className="w-full max-w-4xl mx-auto px-4 sm:px-6">
+                <h1 className="text-2xl font-bold mb-6">
+                    {user?.role === 'admin' ? 'Todos os Agendamentos do Sistema' : 'Meus Agendamentos'}
+                </h1>
 
                 {bookings.length === 0 ? (
                     <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-500">
-                        Você não tem agendamentos registrados.
+                        {user?.role === 'admin' ? 'Nenhum agendamento encontrado no sistema.' : 'Você não tem agendamentos registrados.'}
                     </div>
                 ) : (
                     <div className="grid gap-4">
@@ -170,7 +172,14 @@ export function MyBookings() {
                                     </div>
                                     <div className="flex items-center gap-2 text-gray-600 text-sm">
                                         <Clock className="w-4 h-4" />
-                                        <span>{booking.time}</span>
+                                        <span>{booking.time} hs</span>
+                                        {user?.role === 'admin' && (
+                                            <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded text-xs font-medium flex-wrap">
+                                                Cliente: <span className="text-indigo-600">{(booking as any).user_name || booking.name}</span>
+                                                <span className="mx-2 text-gray-300">|</span>
+                                                Tel: <span className="text-indigo-600">{(booking as any).phone || 'N/A'}</span>
+                                            </span>
+                                        )}
                                     </div>
                                     {booking.notes && (
                                         <p className="text-gray-500 text-sm mt-2 italic">"{booking.notes}"</p>

@@ -20,8 +20,14 @@ export function Navbar() {
             <div className="flex items-center gap-4">
                 {user ? (
                     <div className="flex items-center gap-4">
+                        {user.role === 'admin' && (
+                            <Link to="/my-bookings" className="flex items-center gap-2 text-sm font-bold text-amber-700 hover:text-amber-900 transition-colors bg-amber-100 hover:bg-amber-200 px-4 py-2 rounded-lg border border-amber-200">
+                                <UserCircle className="w-4 h-4" />
+                                <span>Painel Admin</span>
+                            </Link>
+                        )}
                         <Link to="/my-bookings" className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 hidden sm:block">
-                            Ver Agendamentos
+                            {user.role === 'admin' ? 'Todos os Agendamentos' : 'Meus Agendamentos'}
                         </Link>
                         <span className="text-sm font-medium text-gray-700">
                             Olá, <span className="text-indigo-600 capitalize">{user.name}</span>

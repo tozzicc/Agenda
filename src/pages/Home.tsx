@@ -43,7 +43,7 @@ export function Home() {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900">
             <Navbar />
-            <main className="flex-grow flex flex-col items-center justify-start pt-8 pb-12 px-4 sm:px-6">
+            <main className="flex-grow flex flex-col items-center justify-center pb-12 px-4 sm:px-6">
                 {step !== 'success' && <Hero />}
 
                 <div className="w-full max-w-7xl bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 transition-all duration-500 ease-in-out">
