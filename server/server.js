@@ -338,6 +338,11 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('UNHANDLED REJECTION:', reason);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}
+
+export default app;
