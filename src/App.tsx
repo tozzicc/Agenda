@@ -6,27 +6,32 @@ import { MyBookings } from './pages/MyBookings';
 import { AdminSettings } from './pages/AdminSettings';
 
 import { AuthProvider } from './context/AuthContext';
-import { Navbar } from './components/Navbar'; // Import Navbar here to wrap if we want global navbar
+import { Navbar } from './components/Navbar';
+import { Footer } from './components/Footer';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        {/* We can put Navbar inside pages or here. Current design has Navbar inside pages. */}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/my-bookings" element={
-            <>
-              <Navbar />
-              <MyBookings />
-            </>
-          } />
-          <Route path="/admin/settings" element={
-            <AdminSettings />
-          } />
-        </Routes>
+        <div className="min-h-screen flex flex-col">
+          <div className="flex-grow">
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/my-bookings" element={
+                <>
+                  <Navbar />
+                  <MyBookings />
+                </>
+              } />
+              <Route path="/admin/settings" element={
+                <AdminSettings />
+              } />
+            </Routes>
+          </div>
+          <Footer />
+        </div>
       </BrowserRouter>
     </AuthProvider>
   );
