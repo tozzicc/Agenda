@@ -1,30 +1,25 @@
-import db from './db.js';
+import { query } from './db.js';
+import pool from './db.js';
 
 console.log('Running DB Diagnostics...');
 
-db.serialize(() => {
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users'", (err, row) => {
-        if (err) {
-            console.error('DIAGNOSTIC ERROR (Checking tables):', err.message);
-        } else if (row) {
-            console.log('SUCCESS: Table "users" exists.');
-        } else {
-            console.log('FAILURE: Table "users" DOES NOT exist.');
-        }
-    });
+try {
+    const tables = ['users', 'appointments', 'settings'];
 
-    db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='appointments'", (err, row) => {
-        if (err) {
-            console.error('DIAGNOSTIC ERROR (Checking tables):', err.message);
-        } else if (row) {
-            console.log('SUCCESS: Table "appointments" exists.');
+    for (const table of tables) {
+        const result = await query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1",
+            [table]
+        );
+        if (result.rows.length > 0) {
+            console.log(`SUCCESS: Table "${table}" exists.`);
         } else {
-            console.log('FAILURE: Table "appointments" DOES NOT exist.');
+            console.log(`FAILURE: Table "${table}" DOES NOT exist.`);
         }
-    });
-});
-
-setTimeout(() => {
-    db.close();
+    }
+} catch (err) {
+    console.error('DIAGNOSTIC ERROR:', err.message);
+} finally {
+    await pool.end();
     console.log('Diagnostics complete.');
-}, 2000);
+}

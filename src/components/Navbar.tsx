@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, UserCircle, LogOut } from 'lucide-react';
+import { Calendar, UserCircle, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function Navbar() {
@@ -21,10 +21,16 @@ export function Navbar() {
                 {user ? (
                     <div className="flex items-center gap-4">
                         {user.role === 'admin' && (
-                            <Link to="/my-bookings" className="flex items-center gap-2 text-sm font-bold text-amber-700 hover:text-amber-900 transition-colors bg-amber-100 hover:bg-amber-200 px-4 py-2 rounded-lg border border-amber-200">
-                                <UserCircle className="w-4 h-4" />
-                                <span>Painel Admin</span>
-                            </Link>
+                            <>
+                                <Link to="/my-bookings" className="flex items-center gap-2 text-sm font-bold text-amber-700 hover:text-amber-900 transition-colors bg-amber-100 hover:bg-amber-200 px-4 py-2 rounded-lg border border-amber-200">
+                                    <UserCircle className="w-4 h-4" />
+                                    <span>Painel Admin</span>
+                                </Link>
+                                <Link to="/admin/settings" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-indigo-600 transition-colors bg-gray-100 hover:bg-indigo-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-indigo-200">
+                                    <Settings className="w-4 h-4" />
+                                    <span>Configurações</span>
+                                </Link>
+                            </>
                         )}
                         <Link to="/my-bookings" className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 hidden sm:block">
                             {user.role === 'admin' ? 'Todos os Agendamentos' : 'Meus Agendamentos'}

@@ -1,31 +1,29 @@
-import sqlite3 from 'sqlite3';
+import pg from 'pg';
 import bcrypt from 'bcryptjs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const dbPath = join(__dirname, 'database.sqlite');
+const { Pool } = pg;
 
-const db = new sqlite3.Database(dbPath);
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgres://4791a9f3780af424b46763a08ecf87f249532358dd01d7ff76b3e622b3429de5:sk_wYIl9I2_2ziUJHZ26rmBK@db.prisma.io:5432/postgres?sslmode=require',
+    ssl: { rejectUnauthorized: false },
+});
 
 const name = 'Administrador';
 const email = 'admin@admin.com';
 const password = 'admin123';
 const hashedPassword = bcrypt.hashSync(password, 10);
 
-db.run(
-    "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role='admin'",
-    [name, email, hashedPassword, 'admin'],
-    function (err) {
-        if (err) {
-            console.error('Erro ao criar admin:', err.message);
-        } else {
-            console.log('--- ACESSO ADMINISTRATIVO ---');
-            console.log('Email: admin@admin.com');
-            console.log('Senha: admin123');
-            console.log('-----------------------------');
-        }
-        db.close();
-    }
-);
+try {
+    await pool.query(
+        "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO UPDATE SET role = 'admin'",
+        [name, email, hashedPassword, 'admin']
+    );
+    console.log('--- ACESSO ADMINISTRATIVO ---');
+    console.log('Email: admin@admin.com');
+    console.log('Senha: admin123');
+    console.log('-----------------------------');
+} catch (err) {
+    console.error('Erro ao criar admin:', err.message);
+} finally {
+    await pool.end();
+}

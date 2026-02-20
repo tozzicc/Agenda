@@ -2,7 +2,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { MyBookings } from './pages/MyBookings'; // Import
+import { MyBookings } from './pages/MyBookings';
+import { AdminSettings } from './pages/AdminSettings';
 
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar'; // Import Navbar here to wrap if we want global navbar
@@ -21,6 +22,9 @@ export default function App() {
               <Navbar />
               <MyBookings />
             </>
+          } />
+          <Route path="/admin/settings" element={
+            <AdminSettings />
           } />
         </Routes>
       </BrowserRouter>

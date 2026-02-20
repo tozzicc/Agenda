@@ -1,50 +1,67 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const sqlite3 = require('sqlite3').verbose();
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import pg from 'pg';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const { Pool } = pg;
 
-const dbPath = join(__dirname, 'database.sqlite');
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgres://4791a9f3780af424b46763a08ecf87f249532358dd01d7ff76b3e622b3429de5:sk_wYIl9I2_2ziUJHZ26rmBK@db.prisma.io:5432/postgres?sslmode=require',
+    ssl: { rejectUnauthorized: false },
+});
 
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error opening database', err.message);
-    } else {
-        console.log('Connected to the SQLite database.');
+// Helper function for queries
+export async function query(text, params) {
+    return pool.query(text, params);
+}
 
+// Initialize database tables
+async function initializeDatabase() {
+    try {
         // Create users table with role
-        db.run(`CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        await pool.query(`CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             role TEXT DEFAULT 'user'
-        )`, (err) => {
-            if (!err) {
-                // Try to add role column to existing table if it doesn't exist
-                db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", (alterErr) => {
-                    // Ignore error if column already exists
-                });
-            }
-        });
+        )`);
 
         // Create appointments table
-        // Added status column for cancellation (active/cancelled)
-        db.run(`CREATE TABLE IF NOT EXISTS appointments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
+        await pool.query(`CREATE TABLE IF NOT EXISTS appointments (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             date TEXT NOT NULL,
             time TEXT NOT NULL,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
             notes TEXT,
-            status TEXT DEFAULT 'active',
-            FOREIGN KEY (user_id) REFERENCES users (id)
+            status TEXT DEFAULT 'active'
         )`);
-    }
-});
 
-export default db;
+        // Create settings table
+        await pool.query(`CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )`);
+
+        // Insert default schedule settings if they don't exist
+        const defaults = [
+            ['schedule_start', '09:00'],
+            ['schedule_end', '17:00'],
+            ['schedule_interval', '30']
+        ];
+        for (const [key, value] of defaults) {
+            await pool.query(
+                'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING',
+                [key, value]
+            );
+        }
+
+        console.log('Connected to PostgreSQL database. Tables initialized.');
+    } catch (err) {
+        console.error('Error initializing database:', err.message);
+        process.exit(1);
+    }
+}
+
+initializeDatabase();
+
+export default pool;

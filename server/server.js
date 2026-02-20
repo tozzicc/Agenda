@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import db from './db.js';
+import { query } from './db.js';
 
 const app = express();
 const PORT = 3000;
@@ -44,7 +44,7 @@ const authenticateToken = (req, res, next) => {
 
 // --- Auth Routes ---
 
-app.post('/api/auth/register', (req, res, next) => {
+app.post('/api/auth/register', async (req, res, next) => {
     const { name, email, password } = req.body;
     console.log(`Registration attempt for email: ${email}`);
 
@@ -54,30 +54,25 @@ app.post('/api/auth/register', (req, res, next) => {
 
     try {
         const hashedPassword = bcrypt.hashSync(password, 10);
-        db.run('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', [name, email, hashedPassword], function (err) {
-            if (err) {
-                if (err.message.includes('UNIQUE constraint failed')) {
-                    return res.status(409).json({ error: 'Este email já está cadastrado.' });
-                }
-                console.error('Registration DB Error:', err);
-                return res.status(500).json({ error: 'Erro ao salvar no banco de dados', message: err.message });
-            }
+        const result = await query(
+            'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id',
+            [name, email, hashedPassword]
+        );
 
-            try {
-                const userId = this.lastID;
-                const token = jwt.sign({ id: userId, name, email, role: 'user' }, SECRET_KEY, { expiresIn: '24h' });
-                console.log(`Registration successful for ID: ${userId}`);
-                res.status(201).json({ token, user: { id: userId, name, email, role: 'user' } });
-            } catch (tokenErr) {
-                next(tokenErr);
-            }
-        });
-    } catch (hashErr) {
-        next(hashErr);
+        const userId = result.rows[0].id;
+        const token = jwt.sign({ id: userId, name, email, role: 'user' }, SECRET_KEY, { expiresIn: '24h' });
+        console.log(`Registration successful for ID: ${userId}`);
+        res.status(201).json({ token, user: { id: userId, name, email, role: 'user' } });
+    } catch (err) {
+        if (err.code === '23505') { // unique_violation
+            return res.status(409).json({ error: 'Este email já está cadastrado.' });
+        }
+        console.error('Registration DB Error:', err);
+        next(err);
     }
 });
 
-app.post('/api/auth/login', (req, res, next) => {
+app.post('/api/auth/login', async (req, res, next) => {
     const { email, password } = req.body;
     console.log(`Login attempt for email: ${email}`);
 
@@ -85,62 +80,134 @@ app.post('/api/auth/login', (req, res, next) => {
         return res.status(400).json({ error: 'Email e senha são obrigatórios' });
     }
 
-    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-        if (err) {
-            console.error('Login DB Error:', err);
-            return res.status(500).json({ error: 'Erro ao consultar banco de dados', message: err.message });
-        }
+    try {
+        const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+        const user = result.rows[0];
 
         if (!user) {
             console.log(`Login failed: User not found (${email})`);
             return res.status(404).json({ error: 'Usuário não encontrado' });
         }
 
-        try {
-            const passwordIsValid = bcrypt.compareSync(password, user.password);
-            if (!passwordIsValid) {
-                console.log(`Login failed: Invalid password (${email})`);
-                return res.status(401).json({ error: 'Senha incorreta' });
-            }
-
-            const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
-            console.log(`Login successful for user: ${email} (Role: ${user.role})`);
-            res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-        } catch (authErr) {
-            next(authErr);
+        const passwordIsValid = bcrypt.compareSync(password, user.password);
+        if (!passwordIsValid) {
+            console.log(`Login failed: Invalid password (${email})`);
+            return res.status(401).json({ error: 'Senha incorreta' });
         }
-    });
+
+        const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
+        console.log(`Login successful for user: ${email} (Role: ${user.role})`);
+        res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    } catch (err) {
+        console.error('Login DB Error:', err);
+        next(err);
+    }
+});
+
+// --- Schedule Settings Routes ---
+
+// Get schedule settings (public)
+app.get('/api/settings/schedule', async (req, res, next) => {
+    try {
+        const result = await query(
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval')"
+        );
+        const settings = {};
+        result.rows.forEach(row => { settings[row.key] = row.value; });
+        res.json({
+            start: settings.schedule_start || '09:00',
+            end: settings.schedule_end || '17:00',
+            interval: parseInt(settings.schedule_interval || '30', 10)
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Update schedule settings (admin only)
+app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
+    }
+
+    const { start, end, interval } = req.body;
+
+    if (!start || !end || !interval) {
+        return res.status(400).json({ error: 'Todos os campos são obrigatórios (start, end, interval)' });
+    }
+
+    // Validate time format HH:MM
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(start) || !timeRegex.test(end)) {
+        return res.status(400).json({ error: 'Formato de horário inválido. Use HH:MM' });
+    }
+
+    if (![15, 30, 60].includes(Number(interval))) {
+        return res.status(400).json({ error: 'Intervalo deve ser 15, 30 ou 60 minutos' });
+    }
+
+    try {
+        const updates = [
+            ['schedule_start', start],
+            ['schedule_end', end],
+            ['schedule_interval', String(interval)]
+        ];
+
+        for (const [key, value] of updates) {
+            await query(
+                'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+                [key, value]
+            );
+        }
+
+        res.json({ message: 'Configurações salvas com sucesso', start, end, interval: Number(interval) });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // --- Booking Routes ---
 
 // Get booked slots for a specific date
-app.get('/api/bookings', (req, res) => {
+app.get('/api/bookings', async (req, res, next) => {
     const { date } = req.query;
     if (!date) return res.status(400).json({ error: 'Data é obrigatória' });
 
-    db.all("SELECT time FROM appointments WHERE date = ? AND status = 'active'", [date], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows.map(row => row.time));
-    });
+    try {
+        const result = await query(
+            "SELECT time FROM appointments WHERE date = $1 AND status = 'active'",
+            [date]
+        );
+        res.json(result.rows.map(row => row.time));
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Get user's bookings
-app.get('/api/my-bookings', authenticateToken, (req, res) => {
+app.get('/api/my-bookings', authenticateToken, async (req, res, next) => {
     const isAdmin = req.user.role === 'admin';
-    const query = isAdmin
-        ? "SELECT a.*, u.name as user_name FROM appointments a JOIN users u ON a.user_id = u.id ORDER BY a.date DESC, a.time DESC"
-        : "SELECT * FROM appointments WHERE user_id = ? ORDER BY date DESC, time DESC";
-    const params = isAdmin ? [] : [req.user.id];
 
-    db.all(query, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+    try {
+        let result;
+        if (isAdmin) {
+            result = await query(
+                "SELECT a.*, u.name as user_name FROM appointments a JOIN users u ON a.user_id = u.id ORDER BY a.date DESC, a.time DESC"
+            );
+        } else {
+            result = await query(
+                "SELECT * FROM appointments WHERE user_id = $1 ORDER BY date DESC, time DESC",
+                [req.user.id]
+            );
+        }
+        res.json(result.rows);
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Create new booking
-app.post('/api/bookings', authenticateToken, (req, res) => {
+app.post('/api/bookings', authenticateToken, async (req, res, next) => {
     const { date, time, name, phone, notes } = req.body;
     const userId = req.user.id;
 
@@ -148,90 +215,109 @@ app.post('/api/bookings', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
 
-    // Check for double booking
-    db.get("SELECT * FROM appointments WHERE date = ? AND time = ? AND status = 'active'", [date, time], (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (row) return res.status(409).json({ error: 'Este horário já foi reservado' });
+    try {
+        // Check for double booking
+        const existing = await query(
+            "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active'",
+            [date, time]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(409).json({ error: 'Este horário já foi reservado' });
+        }
 
-        const stmt = db.prepare('INSERT INTO appointments (user_id, date, time, name, phone, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        stmt.run([userId, date, time, name, phone, notes, 'active'], function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.status(201).json({ id: this.lastID, message: 'Agendamento realizado com sucesso' });
-        });
-        stmt.finalize();
-    });
+        const result = await query(
+            'INSERT INTO appointments (user_id, date, time, name, phone, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+            [userId, date, time, name, phone, notes, 'active']
+        );
+        res.status(201).json({ id: result.rows[0].id, message: 'Agendamento realizado com sucesso' });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Update booking
-app.put('/api/bookings/:id', authenticateToken, (req, res) => {
+app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
     const { id } = req.params;
     const { date, time, notes } = req.body;
     const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
 
-    db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
-        if (err) return res.status(500).json({ error: err.message });
+    try {
+        const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
+        const booking = bookingResult.rows[0];
+
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
 
         // Allowed if owner OR admin
-        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
+        if (booking.user_id !== userId && !isAdmin) {
+            return res.status(403).json({ error: 'Não autorizado' });
+        }
 
         // Check availability if date/time changed
-        db.get("SELECT * FROM appointments WHERE date = ? AND time = ? AND status = 'active' AND id != ?", [date, time, id], (err, existing) => {
-            if (existing) return res.status(409).json({ error: 'Este horário já está ocupado' });
+        const conflict = await query(
+            "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active' AND id != $3",
+            [date, time, id]
+        );
+        if (conflict.rows.length > 0) {
+            return res.status(409).json({ error: 'Este horário já está ocupado' });
+        }
 
-            const stmt = db.prepare('UPDATE appointments SET date = ?, time = ?, notes = ? WHERE id = ?');
-            stmt.run([date, time, notes, id], function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ message: 'Agendamento atualizado com sucesso' });
-            });
-            stmt.finalize();
-        });
-    });
+        await query(
+            'UPDATE appointments SET date = $1, time = $2, notes = $3 WHERE id = $4',
+            [date, time, notes, id]
+        );
+        res.json({ message: 'Agendamento atualizado com sucesso' });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Cancel booking (Soft Delete)
-app.delete('/api/bookings/:id', authenticateToken, (req, res) => {
+app.delete('/api/bookings/:id', authenticateToken, async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
 
-    db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
-        if (err) return res.status(500).json({ error: err.message });
+    try {
+        const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
+        const booking = bookingResult.rows[0];
+
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
 
         // Allowed if owner OR admin
-        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
+        if (booking.user_id !== userId && !isAdmin) {
+            return res.status(403).json({ error: 'Não autorizado' });
+        }
 
-        const stmt = db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?");
-        stmt.run([id], function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ message: 'Agendamento cancelado com sucesso' });
-        });
-        stmt.finalize();
-    });
+        await query("UPDATE appointments SET status = 'cancelled' WHERE id = $1", [id]);
+        res.json({ message: 'Agendamento cancelado com sucesso' });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Hard Delete booking
-app.delete('/api/bookings/:id/force', authenticateToken, (req, res) => {
+app.delete('/api/bookings/:id/force', authenticateToken, async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
 
-    db.get("SELECT * FROM appointments WHERE id = ?", [id], (err, booking) => {
-        if (err) return res.status(500).json({ error: err.message });
+    try {
+        const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
+        const booking = bookingResult.rows[0];
+
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
 
         // Allowed if owner OR admin
-        if (booking.user_id !== userId && !isAdmin) return res.status(403).json({ error: 'Não autorizado' });
+        if (booking.user_id !== userId && !isAdmin) {
+            return res.status(403).json({ error: 'Não autorizado' });
+        }
 
-        const stmt = db.prepare("DELETE FROM appointments WHERE id = ?");
-        stmt.run([id], function (err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ message: 'Agendamento removido permanentemente' });
-        });
-        stmt.finalize();
-    });
+        await query("DELETE FROM appointments WHERE id = $1", [id]);
+        res.json({ message: 'Agendamento removido permanentemente' });
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Global error handling middleware

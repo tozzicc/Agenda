@@ -1,4 +1,5 @@
-import db from './db.js';
+import { query } from './db.js';
+import pool from './db.js';
 
 const email = process.argv[2];
 
@@ -7,12 +8,15 @@ if (!email) {
     process.exit(1);
 }
 
-db.run("UPDATE users SET role = 'admin' WHERE email = ?", [email], function (err) {
-    if (err) {
-        console.error('Erro ao atualizar:', err.message);
-    } else if (this.changes === 0) {
+try {
+    const result = await query("UPDATE users SET role = 'admin' WHERE email = $1", [email]);
+    if (result.rowCount === 0) {
         console.error('Usuário não encontrado:', email);
     } else {
         console.log(`Sucesso: O usuário ${email} agora é ADMINISTRADOR.`);
     }
-});
+} catch (err) {
+    console.error('Erro ao atualizar:', err.message);
+} finally {
+    await pool.end();
+}

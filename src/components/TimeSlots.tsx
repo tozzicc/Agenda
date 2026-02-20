@@ -10,15 +10,43 @@ interface TimeSlotsProps {
     onSelectTime: (time: string) => void;
 }
 
-const AVAILABLE_TIMES = [
-    "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-    "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
-    "16:00", "16:30"
-];
+function generateSlots(start: string, end: string, interval: number): string[] {
+    const slots: string[] = [];
+    const [startH, startM] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+    let current = startH * 60 + startM;
+    const endMin = endH * 60 + endM;
+
+    while (current < endMin) {
+        const h = Math.floor(current / 60);
+        const m = current % 60;
+        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        current += interval;
+    }
+    return slots;
+}
 
 export function TimeSlots({ selectedDate, selectedTime, onSelectTime }: TimeSlotsProps) {
     const [bookedTimes, setBookedTimes] = useState<string[]>([]);
+    const [availableTimes, setAvailableTimes] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loadingConfig, setLoadingConfig] = useState(true);
+
+    // Fetch schedule config on mount
+    useEffect(() => {
+        fetch('/api/settings/schedule')
+            .then(res => res.json())
+            .then(data => {
+                const slots = generateSlots(data.start, data.end, data.interval);
+                setAvailableTimes(slots);
+                setLoadingConfig(false);
+            })
+            .catch(() => {
+                // Fallback to defaults
+                setAvailableTimes(generateSlots('09:00', '17:00', 30));
+                setLoadingConfig(false);
+            });
+    }, []);
 
     useEffect(() => {
         if (selectedDate) {
@@ -46,13 +74,17 @@ export function TimeSlots({ selectedDate, selectedTime, onSelectTime }: TimeSlot
         );
     }
 
+    if (loadingConfig) {
+        return <p className="text-xs text-center mt-2 text-gray-400">Carregando horários...</p>;
+    }
+
     return (
         <div className="animate-in slide-in-from-left-4 duration-500">
             <h3 className="font-medium text-gray-900 mb-4 capitalize">
                 Horários disponíveis para {format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {AVAILABLE_TIMES.map((time) => {
+                {availableTimes.map((time) => {
                     const isBooked = bookedTimes.includes(time);
                     return (
                         <button
@@ -77,3 +109,4 @@ export function TimeSlots({ selectedDate, selectedTime, onSelectTime }: TimeSlot
         </div>
     );
 }
+
