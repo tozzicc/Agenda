@@ -145,8 +145,8 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         return res.status(400).json({ error: 'Formato de horário inválido. Use HH:MM' });
     }
 
-    if (![15, 30, 60].includes(Number(interval))) {
-        return res.status(400).json({ error: 'Intervalo deve ser 15, 30 ou 60 minutos' });
+    if (![15, 30, 45, 60].includes(Number(interval))) {
+        return res.status(400).json({ error: 'Intervalo deve ser 15, 30, 45 ou 60 minutos' });
     }
 
     try {
