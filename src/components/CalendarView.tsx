@@ -8,7 +8,10 @@ import {
     startOfMonth,
     startOfToday,
     subMonths,
-    isBefore
+    isBefore,
+    isWithinInterval,
+    parseISO,
+    getDay
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
@@ -17,9 +20,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 interface CalendarViewProps {
     selectedDate: Date | undefined;
     onSelect: (date: Date | undefined) => void;
+    settings?: {
+        allow_saturday: boolean;
+        allow_sunday: boolean;
+        blockedPeriods: { start: string; end: string }[];
+    };
 }
 
-export function CalendarView({ selectedDate, onSelect }: CalendarViewProps) {
+export function CalendarView({ selectedDate, onSelect, settings }: CalendarViewProps) {
     const today = startOfToday();
     const [currentMonth, setCurrentMonth] = useState(today);
 
@@ -59,16 +67,37 @@ export function CalendarView({ selectedDate, onSelect }: CalendarViewProps) {
                     const isSelected = selectedDate && isSameDay(date, selectedDate);
                     const isPast = isBefore(date, today);
 
+                    // Check weekend restriction
+                    const dayOfWeek = getDay(date); // 0 = Sunday, 6 = Saturday
+                    const isWeekendDisabled =
+                        (dayOfWeek === 0 && settings && !settings.allow_sunday) ||
+                        (dayOfWeek === 6 && settings && !settings.allow_saturday);
+
+                    // Check blackout periods
+                    const isBlackedOut = settings?.blockedPeriods?.some(period => {
+                        if (!period.start || !period.end) return false;
+                        try {
+                            return isWithinInterval(date, {
+                                start: parseISO(period.start),
+                                end: parseISO(period.end)
+                            });
+                        } catch {
+                            return false;
+                        }
+                    });
+
+                    const isDisabled = isPast || isWeekendDisabled || isBlackedOut;
+
                     return (
                         <button
                             key={date.toString()}
-                            onClick={() => !isPast && onSelect(date)}
-                            disabled={isPast}
+                            onClick={() => !isDisabled && onSelect(date)}
+                            disabled={isDisabled}
                             className={cn(
                                 "flex flex-col items-center justify-center py-3 px-2 rounded-xl border transition-all duration-200 outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2",
                                 isSelected
                                     ? "bg-indigo-600 border-indigo-600 text-white shadow-md scale-[1.02]"
-                                    : isPast
+                                    : isDisabled
                                         ? "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed"
                                         : "bg-white border-gray-200 text-gray-700 hover:border-indigo-300 hover:shadow-sm hover:bg-indigo-50/30"
                             )}

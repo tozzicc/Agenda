@@ -110,14 +110,17 @@ app.post('/api/auth/login', async (req, res, next) => {
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
         const result = await query(
-            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval')"
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods')"
         );
         const settings = {};
         result.rows.forEach(row => { settings[row.key] = row.value; });
         res.json({
             start: settings.schedule_start || '09:00',
             end: settings.schedule_end || '17:00',
-            interval: parseInt(settings.schedule_interval || '30', 10)
+            interval: parseInt(settings.schedule_interval || '30', 10),
+            allow_saturday: settings.allow_saturday === 'true',
+            allow_sunday: settings.allow_sunday === 'true',
+            blockedPeriods: JSON.parse(settings.blocked_periods || '[]')
         });
     } catch (err) {
         next(err);
@@ -130,10 +133,10 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
     }
 
-    const { start, end, interval } = req.body;
+    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods } = req.body;
 
     if (!start || !end || !interval) {
-        return res.status(400).json({ error: 'Todos os campos são obrigatórios (start, end, interval)' });
+        return res.status(400).json({ error: 'Campos obrigatórios: start, end, interval' });
     }
 
     // Validate time format HH:MM
@@ -150,7 +153,10 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         const updates = [
             ['schedule_start', start],
             ['schedule_end', end],
-            ['schedule_interval', String(interval)]
+            ['schedule_interval', String(interval)],
+            ['allow_saturday', String(!!allow_saturday)],
+            ['allow_sunday', String(!!allow_sunday)],
+            ['blocked_periods', JSON.stringify(blockedPeriods || [])]
         ];
 
         for (const [key, value] of updates) {
@@ -160,7 +166,15 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             );
         }
 
-        res.json({ message: 'Configurações salvas com sucesso', start, end, interval: Number(interval) });
+        res.json({
+            message: 'Configurações salvas com sucesso',
+            start,
+            end,
+            interval: Number(interval),
+            allow_saturday,
+            allow_sunday,
+            blockedPeriods
+        });
     } catch (err) {
         next(err);
     }

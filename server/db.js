@@ -46,7 +46,10 @@ async function initializeDatabase() {
         const defaults = [
             ['schedule_start', '09:00'],
             ['schedule_end', '17:00'],
-            ['schedule_interval', '30']
+            ['schedule_interval', '30'],
+            ['allow_saturday', 'false'],
+            ['allow_sunday', 'false'],
+            ['blocked_periods', '[]']
         ];
         for (const [key, value] of defaults) {
             await pool.query(

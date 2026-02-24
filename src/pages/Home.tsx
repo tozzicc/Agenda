@@ -14,6 +14,14 @@ export function Home() {
     const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(undefined);
     const [selectedTime, setSelectedTime] = React.useState<string | null>(null);
     const [bookingData, setBookingData] = React.useState<BookingData | null>(null);
+    const [settings, setSettings] = React.useState<any>(null);
+
+    React.useEffect(() => {
+        fetch('/api/settings/schedule')
+            .then(res => res.json())
+            .then(data => setSettings(data))
+            .catch(err => console.error('Error fetching settings:', err));
+    }, []);
 
     const handleDateSelect = (date: Date | undefined) => {
         setSelectedDate(date);
@@ -70,6 +78,7 @@ export function Home() {
                                 <CalendarView
                                     selectedDate={selectedDate}
                                     onSelect={handleDateSelect}
+                                    settings={settings}
                                 />
                             </div>
 

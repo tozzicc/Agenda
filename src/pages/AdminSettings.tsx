@@ -8,6 +8,9 @@ interface ScheduleConfig {
     start: string;
     end: string;
     interval: number;
+    allow_saturday: boolean;
+    allow_sunday: boolean;
+    blockedPeriods: { start: string; end: string }[];
 }
 
 function generateTimeOptions() {
@@ -40,7 +43,14 @@ const TIME_OPTIONS = generateTimeOptions();
 
 export function AdminSettings() {
     const { user } = useAuth();
-    const [config, setConfig] = useState<ScheduleConfig>({ start: '09:00', end: '17:00', interval: 30 });
+    const [config, setConfig] = useState<ScheduleConfig>({
+        start: '09:00',
+        end: '17:00',
+        interval: 30,
+        allow_saturday: false,
+        allow_sunday: false,
+        blockedPeriods: []
+    });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -50,7 +60,14 @@ export function AdminSettings() {
         fetch('/api/settings/schedule')
             .then(res => res.json())
             .then(data => {
-                setConfig({ start: data.start, end: data.end, interval: data.interval });
+                setConfig({
+                    start: data.start,
+                    end: data.end,
+                    interval: data.interval,
+                    allow_saturday: data.allow_saturday,
+                    allow_sunday: data.allow_sunday,
+                    blockedPeriods: data.blockedPeriods || []
+                });
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -189,6 +206,96 @@ export function AdminSettings() {
                                             {opt.label}
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+
+                            {/* Weekend Toggles */}
+                            <div className="pt-4 border-t border-gray-100">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-4">Funcionamento no Fim de Semana</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <label className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.allow_saturday}
+                                            onChange={(e) => setConfig(prev => ({ ...prev, allow_saturday: e.target.checked }))}
+                                            className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                        />
+                                        <div>
+                                            <span className="block text-sm font-medium text-gray-800">Abrir aos Sábados</span>
+                                            <span className="text-xs text-gray-500">Permitir agendamentos para sábados</span>
+                                        </div>
+                                    </label>
+                                    <label className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.allow_sunday}
+                                            onChange={(e) => setConfig(prev => ({ ...prev, allow_sunday: e.target.checked }))}
+                                            className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                        />
+                                        <div>
+                                            <span className="block text-sm font-medium text-gray-800">Abrir aos Domingos</span>
+                                            <span className="text-xs text-gray-500">Permitir agendamentos para domingos</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Blackout Periods */}
+                            <div className="pt-4 border-t border-gray-100">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                                    Bloqueio de Períodos
+                                    <button
+                                        onClick={() => setConfig(prev => ({ ...prev, blockedPeriods: [...prev.blockedPeriods, { start: '', end: '' }] }))}
+                                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                        + Adicionar Período
+                                    </button>
+                                </h3>
+
+                                <div className="space-y-3">
+                                    {config.blockedPeriods.map((period, index) => (
+                                        <div key={index} className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1 ml-1">Início</label>
+                                                <input
+                                                    type="date"
+                                                    value={period.start}
+                                                    onChange={(e) => {
+                                                        const newPeriods = [...config.blockedPeriods];
+                                                        newPeriods[index].start = e.target.value;
+                                                        setConfig(prev => ({ ...prev, blockedPeriods: newPeriods }));
+                                                    }}
+                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1 ml-1">Fim</label>
+                                                <input
+                                                    type="date"
+                                                    value={period.end}
+                                                    onChange={(e) => {
+                                                        const newPeriods = [...config.blockedPeriods];
+                                                        newPeriods[index].end = e.target.value;
+                                                        setConfig(prev => ({ ...prev, blockedPeriods: newPeriods }));
+                                                    }}
+                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const newPeriods = config.blockedPeriods.filter((_, i) => i !== index);
+                                                    setConfig(prev => ({ ...prev, blockedPeriods: newPeriods }));
+                                                }}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Remover período"
+                                            >
+                                                <CheckCircle className="w-5 h-5 rotate-45" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {config.blockedPeriods.length === 0 && (
+                                        <p className="text-xs text-gray-400 italic">Nenhum período de bloqueio configurado.</p>
+                                    )}
                                 </div>
                             </div>
 
