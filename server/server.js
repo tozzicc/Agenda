@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import 'dotenv/config';
 import { query } from './db.js';
+import { sendPasswordResetEmail } from './mailer.js';
 
 const app = express();
 const PORT = 3000;
@@ -132,6 +134,80 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res, next) 
     } catch (err) {
         console.error('Change Password Error:', err);
         next(err);
+    }
+});
+
+// Forgot Password - Generate reset token and log link
+app.post('/api/auth/forgot-password', async (req, res, next) => {
+    const { email } = req.body;
+    console.log(`Forgot password request for: ${email}`);
+
+    if (!email) {
+        return res.status(400).json({ error: 'Email é obrigatório' });
+    }
+
+    try {
+        const result = await query('SELECT id, name FROM users WHERE email = $1', [email]);
+        const user = result.rows[0];
+
+        if (!user) {
+            // For security reasons, don't reveal if user exists, but we can log it
+            console.log(`Reset requested for non-existent email: ${email}`);
+            return res.json({ message: 'Se este email estiver cadastrado, um link de recuperação será enviado.' });
+        }
+
+        // Generate a reset token (short-lived: 1 hour)
+        const resetToken = jwt.sign(
+            { id: user.id, type: 'reset' },
+            SECRET_KEY,
+            { expiresIn: '1h' }
+        );
+
+        // Simulation: Get the app base URL (usually the origin of the request or hardcoded for dev)
+        const resetLink = `http://localhost:5173/reset-password?token=${resetToken}`;
+
+        try {
+            await sendPasswordResetEmail(email, resetLink);
+            console.log(`Email de recuperação enviado para: ${email}`);
+        } catch (mailErr) {
+            console.error('Failed to send email:', mailErr);
+            // We don't necessarily want to fail the whole request for the user, 
+            // but we could return an error if we prefer.
+        }
+
+        res.json({ message: 'Se este email estiver cadastrado, um link de recuperação será enviado.' });
+    } catch (err) {
+        console.error('Forgot Password Error:', err);
+        next(err);
+    }
+});
+
+// Reset Password - Verify token and update password
+app.post('/api/auth/reset-password', async (req, res, next) => {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+        return res.status(400).json({ error: 'Token e nova senha são obrigatórios' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, SECRET_KEY);
+
+        if (decoded.type !== 'reset') {
+            return res.status(400).json({ error: 'Token inválido para redefinição de senha' });
+        }
+
+        const hashedPassword = bcrypt.hashSync(newPassword, 10);
+        await query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, decoded.id]);
+
+        console.log(`Password reset successfully for user ID: ${decoded.id}`);
+        res.json({ message: 'Senha redefinida com sucesso' });
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+            return res.status(400).json({ error: 'O link de recuperação expirou. Por favor, solicite um novo.' });
+        }
+        console.error('Reset Password Error:', err);
+        res.status(400).json({ error: 'Link de recuperação inválido' });
     }
 });
 

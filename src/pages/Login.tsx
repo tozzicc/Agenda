@@ -54,7 +54,7 @@ export function Login() {
                         <div>
                             <div className="flex justify-between items-center mb-1">
                                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">Senha</label>
-                                <a href="#" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Esqueceu a senha?</a>
+                                <Link to="/forgot-password" title="Esqueceu a senha?" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Esqueceu a senha?</Link>
                             </div>
                             <input
                                 type="password"
