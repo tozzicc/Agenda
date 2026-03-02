@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Navbar } from '../components/Navbar';
-import { Settings, Clock, Save, CheckCircle } from 'lucide-react';
+import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface ScheduleConfig {
@@ -11,6 +11,10 @@ interface ScheduleConfig {
     allow_saturday: boolean;
     allow_sunday: boolean;
     blockedPeriods: { start: string; end: string }[];
+    adminEmail: string;
+    enable_lunch: boolean;
+    lunch_start: string;
+    lunch_end: string;
 }
 
 function generateTimeOptions() {
@@ -23,17 +27,22 @@ function generateTimeOptions() {
     return options;
 }
 
-function generatePreviewSlots(start: string, end: string, interval: number): string[] {
+function generatePreviewSlots(start: string, end: string, interval: number, config?: ScheduleConfig): string[] {
     const slots: string[] = [];
     const [startH, startM] = start.split(':').map(Number);
     const [endH, endM] = end.split(':').map(Number);
     let current = startH * 60 + startM;
     const endMin = endH * 60 + endM;
 
+    const lunchStart = config?.enable_lunch ? (config.lunch_start.split(':').map(Number)[0] * 60 + config.lunch_start.split(':').map(Number)[1]) : -1;
+    const lunchEnd = config?.enable_lunch ? (config.lunch_end.split(':').map(Number)[0] * 60 + config.lunch_end.split(':').map(Number)[1]) : -1;
+
     while (current < endMin) {
-        const h = Math.floor(current / 60);
-        const m = current % 60;
-        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        if (lunchStart === -1 || current < lunchStart || current >= lunchEnd) {
+            const h = Math.floor(current / 60);
+            const m = current % 60;
+            slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        }
         current += interval;
     }
     return slots;
@@ -49,8 +58,22 @@ export function AdminSettings() {
         interval: 30,
         allow_saturday: false,
         allow_sunday: false,
-        blockedPeriods: []
+        blockedPeriods: [],
+        adminEmail: '',
+        enable_lunch: false,
+        lunch_start: '12:00',
+        lunch_end: '13:00'
     });
+
+    const [passwordData, setPasswordData] = useState({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+    });
+    const [passwordSaving, setPasswordSaving] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
+    const [passwordSuccess, setPasswordSuccess] = useState(false);
+    const [showPasswords, setShowPasswords] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -66,7 +89,11 @@ export function AdminSettings() {
                     interval: data.interval,
                     allow_saturday: data.allow_saturday,
                     allow_sunday: data.allow_sunday,
-                    blockedPeriods: data.blockedPeriods || []
+                    blockedPeriods: data.blockedPeriods || [],
+                    adminEmail: data.adminEmail || '',
+                    enable_lunch: data.enable_lunch,
+                    lunch_start: data.lunch_start || '12:00',
+                    lunch_end: data.lunch_end || '13:00'
                 });
                 setLoading(false);
             })
@@ -74,8 +101,8 @@ export function AdminSettings() {
     }, []);
 
     const previewSlots = useMemo(() => {
-        return generatePreviewSlots(config.start, config.end, config.interval);
-    }, [config.start, config.end, config.interval]);
+        return generatePreviewSlots(config.start, config.end, config.interval, config);
+    }, [config.start, config.end, config.interval, config.enable_lunch, config.lunch_start, config.lunch_end]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -104,6 +131,51 @@ export function AdminSettings() {
             setError('Erro ao conectar com o servidor');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleChangePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setPasswordError('');
+        setPasswordSuccess(false);
+
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+            setPasswordError('As senhas não coincidem');
+            return;
+        }
+
+        if (passwordData.newPassword.length < 6) {
+            setPasswordError('A nova senha deve ter pelo menos 6 caracteres');
+            return;
+        }
+
+        setPasswordSaving(true);
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    currentPassword: passwordData.currentPassword,
+                    newPassword: passwordData.newPassword
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                setPasswordSuccess(true);
+                setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                setTimeout(() => setPasswordSuccess(false), 3000);
+            } else {
+                setPasswordError(data.error || 'Erro ao alterar senha');
+            }
+        } catch {
+            setPasswordError('Erro ao conectar com o servidor');
+        } finally {
+            setPasswordSaving(false);
         }
     };
 
@@ -241,6 +313,73 @@ export function AdminSettings() {
                                 </div>
                             </div>
 
+                            {/* Admin Email */}
+                            <div className="pt-4 border-t border-gray-100">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    <Mail className="w-4 h-4 inline mr-1.5 text-indigo-500" />
+                                    E-mail do Administrador (para notificações e recuperação)
+                                </label>
+                                <input
+                                    type="email"
+                                    value={config.adminEmail}
+                                    onChange={(e) => setConfig(prev => ({ ...prev, adminEmail: e.target.value }))}
+                                    placeholder="admin@exemplo.com"
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white text-gray-800"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 ml-1 italic">
+                                    Este e-mail será usado para envio de confirmações e links de nova senha.
+                                </p>
+                            </div>
+
+                            {/* Lunch Hour */}
+                            <div className="pt-4 border-t border-gray-100">
+                                <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center justify-between">
+                                    Horário de Almoço
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={config.enable_lunch}
+                                            onChange={(e) => setConfig(prev => ({ ...prev, enable_lunch: e.target.checked }))}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                        <span className="ml-3 text-sm font-medium text-gray-700">{config.enable_lunch ? 'Ativado' : 'Desativado'}</span>
+                                    </label>
+                                </h3>
+
+                                {config.enable_lunch && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-in fade-in duration-300">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 mb-2">Início do Almoço</label>
+                                            <select
+                                                value={config.lunch_start}
+                                                onChange={(e) => setConfig(prev => ({ ...prev, lunch_start: e.target.value }))}
+                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                                            >
+                                                {TIME_OPTIONS.map(t => (
+                                                    <option key={t} value={t}>{t}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-500 mb-2">Fim do Almoço</label>
+                                            <select
+                                                value={config.lunch_end}
+                                                onChange={(e) => setConfig(prev => ({ ...prev, lunch_end: e.target.value }))}
+                                                className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                                            >
+                                                {TIME_OPTIONS.map(t => (
+                                                    <option key={t} value={t}>{t}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-gray-400 mt-2 ml-1 italic">
+                                    Os horários dentro deste intervalo não serão exibidos para agendamento.
+                                </p>
+                            </div>
+
                             {/* Blackout Periods */}
                             <div className="pt-4 border-t border-gray-100">
                                 <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center justify-between">
@@ -354,6 +493,86 @@ export function AdminSettings() {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    {/* Change Password Section */}
+                    <div className="mt-8 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+                                    <Lock className="w-4 h-4 text-red-700" />
+                                </div>
+                                <h2 className="text-lg font-bold text-gray-900">Alterar Senha do Administrador</h2>
+                            </div>
+
+                            <form onSubmit={handleChangePassword} className="space-y-4">
+                                <div className="relative">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Senha Atual</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showPasswords ? "text" : "password"}
+                                            value={passwordData.currentPassword}
+                                            onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none pr-10"
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPasswords(!showPasswords)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Nova Senha</label>
+                                        <input
+                                            type={showPasswords ? "text" : "password"}
+                                            value={passwordData.newPassword}
+                                            onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Nova Senha</label>
+                                        <input
+                                            type={showPasswords ? "text" : "password"}
+                                            value={passwordData.confirmPassword}
+                                            onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                {passwordError && (
+                                    <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                                        {passwordError}
+                                    </div>
+                                )}
+
+                                {passwordSuccess && (
+                                    <div className="p-3 bg-green-50 text-green-600 text-sm rounded-lg border border-green-100">
+                                        Senha alterada com sucesso!
+                                    </div>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={passwordSaving}
+                                    className={cn(
+                                        "w-full py-2.5 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2",
+                                        passwordSaving ? "bg-gray-400" : "bg-gray-900 text-white hover:bg-black shadow-lg"
+                                    )}
+                                >
+                                    {passwordSaving ? 'Alterando...' : 'Atualizar Senha'}
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>

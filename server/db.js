@@ -49,7 +49,11 @@ async function initializeDatabase() {
             ['schedule_interval', '30'],
             ['allow_saturday', 'false'],
             ['allow_sunday', 'false'],
-            ['blocked_periods', '[]']
+            ['blocked_periods', '[]'],
+            ['admin_email', ''],
+            ['enable_lunch', 'false'],
+            ['lunch_start', '12:00'],
+            ['lunch_end', '13:00']
         ];
         for (const [key, value] of defaults) {
             await pool.query(

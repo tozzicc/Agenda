@@ -10,17 +10,22 @@ interface TimeSlotsProps {
     onSelectTime: (time: string) => void;
 }
 
-function generateSlots(start: string, end: string, interval: number): string[] {
+function generateSlots(start: string, end: string, interval: number, config?: any): string[] {
     const slots: string[] = [];
     const [startH, startM] = start.split(':').map(Number);
     const [endH, endM] = end.split(':').map(Number);
     let current = startH * 60 + startM;
     const endMin = endH * 60 + endM;
 
+    const lunchStart = config?.enable_lunch ? (config.lunch_start.split(':').map(Number)[0] * 60 + config.lunch_start.split(':').map(Number)[1]) : -1;
+    const lunchEnd = config?.enable_lunch ? (config.lunch_end.split(':').map(Number)[0] * 60 + config.lunch_end.split(':').map(Number)[1]) : -1;
+
     while (current < endMin) {
-        const h = Math.floor(current / 60);
-        const m = current % 60;
-        slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        if (lunchStart === -1 || current < lunchStart || current >= lunchEnd) {
+            const h = Math.floor(current / 60);
+            const m = current % 60;
+            slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+        }
         current += interval;
     }
     return slots;
@@ -37,7 +42,7 @@ export function TimeSlots({ selectedDate, selectedTime, onSelectTime }: TimeSlot
         fetch('/api/settings/schedule')
             .then(res => res.json())
             .then(data => {
-                const slots = generateSlots(data.start, data.end, data.interval);
+                const slots = generateSlots(data.start, data.end, data.interval, data);
                 setAvailableTimes(slots);
                 setLoadingConfig(false);
             })

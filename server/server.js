@@ -104,13 +104,44 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
 });
 
+app.post('/api/auth/change-password', authenticateToken, async (req, res, next) => {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
+    }
+
+    try {
+        const result = await query('SELECT password FROM users WHERE id = $1', [userId]);
+        const user = result.rows[0];
+
+        if (!user) {
+            return res.status(404).json({ error: 'Usuário não encontrado' });
+        }
+
+        const passwordIsValid = bcrypt.compareSync(currentPassword, user.password);
+        if (!passwordIsValid) {
+            return res.status(401).json({ error: 'Senha atual incorreta' });
+        }
+
+        const hashedPassword = bcrypt.hashSync(newPassword, 10);
+        await query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+
+        res.json({ message: 'Senha alterada com sucesso' });
+    } catch (err) {
+        console.error('Change Password Error:', err);
+        next(err);
+    }
+});
+
 // --- Schedule Settings Routes ---
 
 // Get schedule settings (public)
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
         const result = await query(
-            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods')"
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end')"
         );
         const settings = {};
         result.rows.forEach(row => { settings[row.key] = row.value; });
@@ -120,7 +151,11 @@ app.get('/api/settings/schedule', async (req, res, next) => {
             interval: parseInt(settings.schedule_interval || '30', 10),
             allow_saturday: settings.allow_saturday === 'true',
             allow_sunday: settings.allow_sunday === 'true',
-            blockedPeriods: JSON.parse(settings.blocked_periods || '[]')
+            blockedPeriods: JSON.parse(settings.blocked_periods || '[]'),
+            adminEmail: settings.admin_email || '',
+            enable_lunch: settings.enable_lunch === 'true',
+            lunch_start: settings.lunch_start || '12:00',
+            lunch_end: settings.lunch_end || '13:00'
         });
     } catch (err) {
         next(err);
@@ -133,7 +168,7 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
     }
 
-    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods } = req.body;
+    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end } = req.body;
 
     if (!start || !end || !interval) {
         return res.status(400).json({ error: 'Campos obrigatórios: start, end, interval' });
@@ -156,7 +191,11 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             ['schedule_interval', String(interval)],
             ['allow_saturday', String(!!allow_saturday)],
             ['allow_sunday', String(!!allow_sunday)],
-            ['blocked_periods', JSON.stringify(blockedPeriods || [])]
+            ['blocked_periods', JSON.stringify(blockedPeriods || [])],
+            ['admin_email', adminEmail || ''],
+            ['enable_lunch', String(!!enable_lunch)],
+            ['lunch_start', lunch_start || '12:00'],
+            ['lunch_end', lunch_end || '13:00']
         ];
 
         for (const [key, value] of updates) {
@@ -173,7 +212,11 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             interval: Number(interval),
             allow_saturday,
             allow_sunday,
-            blockedPeriods
+            blockedPeriods,
+            adminEmail,
+            enable_lunch,
+            lunch_start,
+            lunch_end
         });
     } catch (err) {
         next(err);
