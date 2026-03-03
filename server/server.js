@@ -18,18 +18,9 @@ const SECRET_KEY = 'your_secret_key'; // In production, use environment variable
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Configure Multer for Logo Uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, path.join(__dirname, 'uploads/'));
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+// Configure Multer for Logo Uploads (Memory Storage for Base64)
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage: storage,
@@ -344,14 +335,14 @@ app.post('/api/settings/logo', authenticateToken, upload.single('logo'), async (
         return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    const logoUrl = `/uploads/${req.file.filename}`;
+    const base64Logo = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
 
     try {
         await query(
             'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
-            ['app_logo', logoUrl]
+            ['app_logo', base64Logo]
         );
-        res.json({ logoUrl });
+        res.json({ logoUrl: base64Logo });
     } catch (err) {
         console.error('Logo Upload DB Error:', err);
         res.status(500).json({ error: 'Erro ao salvar o logo no banco de dados' });
