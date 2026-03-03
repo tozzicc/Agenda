@@ -7,35 +7,38 @@ import { AdminSettings } from './pages/AdminSettings';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthProvider } from './context/AuthContext';
+import { SettingsProvider } from './context/SettingsContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <div className="min-h-screen flex flex-col">
-          <div className="flex-grow">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/my-bookings" element={
-                <>
-                  <Navbar />
-                  <MyBookings />
-                </>
-              } />
-              <Route path="/admin/settings" element={
-                <AdminSettings />
-              } />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-            </Routes>
+    <SettingsProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <div className="min-h-screen flex flex-col">
+            <div className="flex-grow">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/my-bookings" element={
+                  <>
+                    <Navbar />
+                    <MyBookings />
+                  </>
+                } />
+                <Route path="/admin/settings" element={
+                  <AdminSettings />
+                } />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+              </Routes>
+            </div>
+            <Footer />
           </div>
-          <Footer />
-        </div>
-      </BrowserRouter>
-    </AuthProvider>
+        </BrowserRouter>
+      </AuthProvider>
+    </SettingsProvider>
   );
 }

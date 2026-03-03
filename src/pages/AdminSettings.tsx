@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { Navbar } from '../components/Navbar';
 import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -15,6 +16,7 @@ interface ScheduleConfig {
     enable_lunch: boolean;
     lunch_start: string;
     lunch_end: string;
+    appLogo: string;
 }
 
 function generateTimeOptions() {
@@ -52,17 +54,19 @@ const TIME_OPTIONS = generateTimeOptions();
 
 export function AdminSettings() {
     const { user } = useAuth();
+    const { settings, refreshSettings } = useSettings();
     const [config, setConfig] = useState<ScheduleConfig>({
-        start: '09:00',
-        end: '17:00',
-        interval: 30,
-        allow_saturday: false,
-        allow_sunday: false,
-        blockedPeriods: [],
-        adminEmail: '',
-        enable_lunch: false,
-        lunch_start: '12:00',
-        lunch_end: '13:00'
+        start: settings.start,
+        end: settings.end,
+        interval: settings.interval,
+        allow_saturday: settings.allow_saturday,
+        allow_sunday: settings.allow_sunday,
+        blockedPeriods: settings.blockedPeriods,
+        adminEmail: settings.adminEmail,
+        enable_lunch: settings.enable_lunch,
+        lunch_start: settings.lunch_start,
+        lunch_end: settings.lunch_end,
+        appLogo: settings.appLogo
     });
 
     const [passwordData, setPasswordData] = useState({
@@ -76,29 +80,26 @@ export function AdminSettings() {
     const [showPasswords, setShowPasswords] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [logoUploading, setLogoUploading] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        fetch('/api/settings/schedule')
-            .then(res => res.json())
-            .then(data => {
-                setConfig({
-                    start: data.start,
-                    end: data.end,
-                    interval: data.interval,
-                    allow_saturday: data.allow_saturday,
-                    allow_sunday: data.allow_sunday,
-                    blockedPeriods: data.blockedPeriods || [],
-                    adminEmail: data.adminEmail || '',
-                    enable_lunch: data.enable_lunch,
-                    lunch_start: data.lunch_start || '12:00',
-                    lunch_end: data.lunch_end || '13:00'
-                });
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
-    }, []);
+        setConfig({
+            start: settings.start,
+            end: settings.end,
+            interval: settings.interval,
+            allow_saturday: settings.allow_saturday,
+            allow_sunday: settings.allow_sunday,
+            blockedPeriods: settings.blockedPeriods,
+            adminEmail: settings.adminEmail,
+            enable_lunch: settings.enable_lunch,
+            lunch_start: settings.lunch_start,
+            lunch_end: settings.lunch_end,
+            appLogo: settings.appLogo
+        });
+        setLoading(false);
+    }, [settings]);
 
     const previewSlots = useMemo(() => {
         return generatePreviewSlots(config.start, config.end, config.interval, config);
@@ -122,6 +123,7 @@ export function AdminSettings() {
 
             if (response.ok) {
                 setSaved(true);
+                await refreshSettings();
                 setTimeout(() => setSaved(false), 3000);
             } else {
                 const data = await response.json();
@@ -131,6 +133,45 @@ export function AdminSettings() {
             setError('Erro ao conectar com o servidor');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 2 * 1024 * 1024) {
+            setError('A imagem deve ter no máximo 2MB');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('logo', file);
+
+        setLogoUploading(true);
+        setError('');
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/settings/logo', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                setConfig(prev => ({ ...prev, appLogo: data.logoUrl }));
+                await refreshSettings();
+            } else {
+                setError(data.error || 'Erro ao fazer upload do logo');
+            }
+        } catch {
+            setError('Erro ao conectar com o servidor');
+        } finally {
+            setLogoUploading(false);
         }
     };
 
@@ -214,6 +255,66 @@ export function AdminSettings() {
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900">Configurações de Horário</h1>
                             <p className="text-sm text-gray-500">Defina os horários disponíveis para agendamento</p>
+                        </div>
+                    </div>
+
+                    {/* Logo Upload Section */}
+                    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden mb-8">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                    <Settings className="w-4 h-4 text-indigo-700" />
+                                </div>
+                                <h2 className="text-lg font-bold text-gray-900">Logo da Empresa</h2>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-center gap-6">
+                                <div className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50 relative group">
+                                    {config.appLogo ? (
+                                        <img
+                                            src={config.appLogo}
+                                            alt="Logo Preview"
+                                            className="w-full h-full object-contain p-2"
+                                        />
+                                    ) : (
+                                        <div className="text-center p-4">
+                                            <Settings className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+                                            <p className="text-[10px] text-gray-400">Sem Logo</p>
+                                        </div>
+                                    )}
+                                    {logoUploading && (
+                                        <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                                            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex-1 space-y-3">
+                                    <p className="text-sm text-gray-500">
+                                        Suba uma imagem para ser exibida no topo do sistema e na tela de login.
+                                        Formatos aceitos: PNG, JPG ou WEBP. Máximo 2MB.
+                                    </p>
+                                    <label className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
+                                        <Save className="w-4 h-4 mr-2" />
+                                        {config.appLogo ? 'Alterar Logo' : 'Selecionar Logo'}
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={handleLogoUpload}
+                                            disabled={logoUploading}
+                                        />
+                                    </label>
+                                    {config.appLogo && (
+                                        <button
+                                            onClick={() => setConfig(prev => ({ ...prev, appLogo: '' }))}
+                                            className="ml-3 text-xs text-red-500 hover:text-red-600 font-medium"
+                                        >
+                                            Remover
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
 

@@ -1,9 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Calendar, UserCircle, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 
 export function Navbar() {
     const { user, logout } = useAuth();
+    const { settings } = useSettings();
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -15,7 +17,11 @@ export function Navbar() {
         <header className="w-full border-b border-gray-100 bg-white sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between">
                 <Link to="/" className="flex items-center gap-2 text-indigo-600 font-semibold text-lg hover:opacity-80 transition-opacity">
-                    <Calendar className="w-6 h-6" />
+                    {settings.appLogo ? (
+                        <img src={settings.appLogo} alt="Logo" className="w-8 h-8 object-contain" />
+                    ) : (
+                        <Calendar className="w-6 h-6" />
+                    )}
                     <span>Agenda</span>
                 </Link>
                 <div className="flex items-center gap-4">

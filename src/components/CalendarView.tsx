@@ -16,18 +16,15 @@ import {
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSettings } from '../context/SettingsContext';
 
 interface CalendarViewProps {
     selectedDate: Date | undefined;
     onSelect: (date: Date | undefined) => void;
-    settings?: {
-        allow_saturday: boolean;
-        allow_sunday: boolean;
-        blockedPeriods: { start: string; end: string }[];
-    };
 }
 
-export function CalendarView({ selectedDate, onSelect, settings }: CalendarViewProps) {
+export function CalendarView({ selectedDate, onSelect }: CalendarViewProps) {
+    const { settings } = useSettings();
     const today = startOfToday();
     const [currentMonth, setCurrentMonth] = useState(today);
 

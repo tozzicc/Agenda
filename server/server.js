@@ -2,9 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import multer from 'multer';
 import 'dotenv/config';
 import { query } from './db.js';
-import { sendPasswordResetEmail } from './mailer.js';
+import { sendPasswordResetEmail, sendBookingConfirmationEmail } from './mailer.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
@@ -12,6 +18,32 @@ const SECRET_KEY = 'your_secret_key'; // In production, use environment variable
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Configure Multer for Logo Uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, path.join(__dirname, 'uploads/'));
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+    fileFilter: (req, file, cb) => {
+        const filetypes = /jpeg|jpg|png|webp/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        if (mimetype && extname) {
+            return cb(null, true);
+        }
+        cb(new Error('Apenas imagens (jpeg, jpg, png, webp) são permitidas!'));
+    }
+});
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -217,7 +249,7 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
         const result = await query(
-            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end')"
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end', 'app_logo')"
         );
         const settings = {};
         result.rows.forEach(row => { settings[row.key] = row.value; });
@@ -231,7 +263,8 @@ app.get('/api/settings/schedule', async (req, res, next) => {
             adminEmail: settings.admin_email || '',
             enable_lunch: settings.enable_lunch === 'true',
             lunch_start: settings.lunch_start || '12:00',
-            lunch_end: settings.lunch_end || '13:00'
+            lunch_end: settings.lunch_end || '13:00',
+            appLogo: settings.app_logo || ''
         });
     } catch (err) {
         next(err);
@@ -244,7 +277,7 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
     }
 
-    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end } = req.body;
+    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end, appLogo } = req.body;
 
     if (!start || !end || !interval) {
         return res.status(400).json({ error: 'Campos obrigatórios: start, end, interval' });
@@ -271,7 +304,8 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             ['admin_email', adminEmail || ''],
             ['enable_lunch', String(!!enable_lunch)],
             ['lunch_start', lunch_start || '12:00'],
-            ['lunch_end', lunch_end || '13:00']
+            ['lunch_end', lunch_end || '13:00'],
+            ['app_logo', appLogo || '']
         ];
 
         for (const [key, value] of updates) {
@@ -292,10 +326,35 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             adminEmail,
             enable_lunch,
             lunch_start,
-            lunch_end
+            lunch_end,
+            appLogo
         });
     } catch (err) {
         next(err);
+    }
+});
+
+// Logo Upload Endpoint
+app.post('/api/settings/logo', authenticateToken, upload.single('logo'), async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Apenas administradores podem enviar logos' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+
+    const logoUrl = `/uploads/${req.file.filename}`;
+
+    try {
+        await query(
+            'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+            ['app_logo', logoUrl]
+        );
+        res.json({ logoUrl });
+    } catch (err) {
+        console.error('Logo Upload DB Error:', err);
+        res.status(500).json({ error: 'Erro ao salvar o logo no banco de dados' });
     }
 });
 
@@ -362,6 +421,11 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
             'INSERT INTO appointments (user_id, date, time, name, phone, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
             [userId, date, time, name, phone, notes, 'active']
         );
+
+        // Send confirmation email asychronously
+        sendBookingConfirmationEmail(req.user.email, { name, date, time, phone, notes })
+            .catch(err => console.error('Error sending confirmation email in route:', err));
+
         res.status(201).json({ id: result.rows[0].id, message: 'Agendamento realizado com sucesso' });
     } catch (err) {
         next(err);

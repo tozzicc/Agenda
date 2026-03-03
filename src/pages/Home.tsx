@@ -8,20 +8,14 @@ import { cn } from '../lib/utils';
 import { ChevronRight } from 'lucide-react';
 
 import { Navbar } from '../components/Navbar';
+import { useSettings } from '../context/SettingsContext';
 
 export function Home() {
+    const { settings } = useSettings();
     const [step, setStep] = React.useState<'date' | 'time' | 'form' | 'success'>('date');
     const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(undefined);
     const [selectedTime, setSelectedTime] = React.useState<string | null>(null);
     const [bookingData, setBookingData] = React.useState<BookingData | null>(null);
-    const [settings, setSettings] = React.useState<any>(null);
-
-    React.useEffect(() => {
-        fetch('/api/settings/schedule')
-            .then(res => res.json())
-            .then(data => setSettings(data))
-            .catch(err => console.error('Error fetching settings:', err));
-    }, []);
 
     const handleDateSelect = (date: Date | undefined) => {
         setSelectedDate(date);
@@ -52,7 +46,7 @@ export function Home() {
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900">
             <Navbar />
             <main className="flex-grow flex flex-col items-center justify-center pb-12 px-4 sm:px-6">
-                {step !== 'success' && <Hero />}
+                {step !== 'success' && <Hero logo={settings?.appLogo} />}
 
                 <div className="w-full max-w-7xl bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 transition-all duration-500 ease-in-out">
                     {step === 'success' && bookingData && selectedDate && selectedTime ? (
@@ -78,7 +72,6 @@ export function Home() {
                                 <CalendarView
                                     selectedDate={selectedDate}
                                     onSelect={handleDateSelect}
-                                    settings={settings}
                                 />
                             </div>
 

@@ -27,3 +27,7 @@ dist-ssr
 *.sqlite
 .env
 
+# Uploads
+server/uploads/*
+!server/uploads/.gitkeep
+

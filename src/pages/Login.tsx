@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 
 export function Login() {
+    const { settings } = useSettings();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const { login } = useAuth();
@@ -28,6 +30,13 @@ export function Login() {
             <main className="flex-grow flex items-center justify-center px-4 sm:px-6 py-12">
                 <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100 animate-in fade-in zoom-in-95 duration-500">
                     <div className="text-center mb-8">
+                        {settings.appLogo && (
+                            <img
+                                src={settings.appLogo}
+                                alt="Logo"
+                                className="w-20 h-20 object-contain mx-auto mb-4"
+                            />
+                        )}
                         <h1 className="text-2xl font-bold text-gray-900 mb-2">Bem-vindo de volta</h1>
                         <p className="text-gray-500">Entre na sua conta para gerenciar agendamentos</p>
                     </div>

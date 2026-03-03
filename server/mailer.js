@@ -49,3 +49,42 @@ export const sendPasswordResetEmail = async (to, resetLink) => {
         throw error;
     }
 };
+export const sendBookingConfirmationEmail = async (to, bookingDetails) => {
+    const { name, date, time, phone, notes } = bookingDetails;
+
+    // Format date for display (assuming YYYY-MM-DD)
+    const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+
+    const mailOptions = {
+        from: `"Agenda" <${process.env.SMTP_USER}>`,
+        to: to,
+        subject: 'Confirmação de Agendamento - Agenda',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+                <h2 style="color: #4f46e5; text-align: center;">Agendamento Confirmado!</h2>
+                <p>Olá <strong>${name}</strong>,</p>
+                <p>Seu agendamento foi realizado com sucesso. Confira os detalhes abaixo:</p>
+                
+                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Data:</strong> ${formattedDate}</p>
+                    <p style="margin: 5px 0;"><strong>Horário:</strong> ${time}</p>
+                    <p style="margin: 5px 0;"><strong>Telefone:</strong> ${phone}</p>
+                    ${notes ? `<p style="margin: 5px 0;"><strong>Observações:</strong> ${notes}</p>` : ''}
+                </div>
+
+                <p style="color: #64748b; font-size: 14px;">Se precisar cancelar ou alterar o horário, acesse sua conta no sistema.</p>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <p style="color: #94a3b8; font-size: 12px; text-align: center;">© ${new Date().getFullYear()} Agenda. Todos os direitos reservados.</p>
+            </div>
+        `,
+    };
+
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Booking confirmation email sent: ' + info.response);
+        return info;
+    } catch (error) {
+        console.error('Error sending booking confirmation email:', error);
+        throw error;
+    }
+};
