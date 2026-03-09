@@ -12,6 +12,7 @@ interface Settings {
     lunch_start: string;
     lunch_end: string;
     appLogo: string;
+    whatsappNumber: string;
 }
 
 interface SettingsContextType {
@@ -31,7 +32,8 @@ const defaultSettings: Settings = {
     enable_lunch: false,
     lunch_start: '12:00',
     lunch_end: '13:00',
-    appLogo: ''
+    appLogo: '',
+    whatsappNumber: ''
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -56,7 +58,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                     enable_lunch: data.enable_lunch,
                     lunch_start: data.lunch_start || '12:00',
                     lunch_end: data.lunch_end || '13:00',
-                    appLogo: data.appLogo || ''
+                    appLogo: data.appLogo || '',
+                    whatsappNumber: data.whatsappNumber || ''
                 });
             }
         } catch (error) {

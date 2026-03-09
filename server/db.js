@@ -53,7 +53,8 @@ async function initializeDatabase() {
             ['admin_email', ''],
             ['enable_lunch', 'false'],
             ['lunch_start', '12:00'],
-            ['lunch_end', '13:00']
+            ['lunch_end', '13:00'],
+            ['whatsapp_number', '']
         ];
         for (const [key, value] of defaults) {
             await pool.query(

@@ -241,7 +241,7 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
         const result = await query(
-            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end', 'app_logo')"
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end', 'app_logo', 'whatsapp_number')"
         );
         const settings = {};
         result.rows.forEach(row => { settings[row.key] = row.value; });
@@ -256,7 +256,8 @@ app.get('/api/settings/schedule', async (req, res, next) => {
             enable_lunch: settings.enable_lunch === 'true',
             lunch_start: settings.lunch_start || '12:00',
             lunch_end: settings.lunch_end || '13:00',
-            appLogo: settings.app_logo || ''
+            appLogo: settings.app_logo || '',
+            whatsappNumber: settings.whatsapp_number || ''
         });
     } catch (err) {
         next(err);
@@ -269,7 +270,7 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
         return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
     }
 
-    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end, appLogo } = req.body;
+    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end, appLogo, whatsappNumber } = req.body;
 
     if (!start || !end || !interval) {
         return res.status(400).json({ error: 'Campos obrigatórios: start, end, interval' });
@@ -297,7 +298,8 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             ['enable_lunch', String(!!enable_lunch)],
             ['lunch_start', lunch_start || '12:00'],
             ['lunch_end', lunch_end || '13:00'],
-            ['app_logo', appLogo || '']
+            ['app_logo', appLogo || ''],
+            ['whatsapp_number', whatsappNumber || '']
         ];
 
         for (const [key, value] of updates) {
@@ -319,7 +321,8 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             enable_lunch,
             lunch_start,
             lunch_end,
-            appLogo
+            appLogo,
+            whatsappNumber
         });
     } catch (err) {
         next(err);

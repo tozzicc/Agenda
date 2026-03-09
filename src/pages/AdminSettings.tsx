@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { Navbar } from '../components/Navbar';
-import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff, Phone } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface ScheduleConfig {
@@ -17,6 +17,7 @@ interface ScheduleConfig {
     lunch_start: string;
     lunch_end: string;
     appLogo: string;
+    whatsappNumber: string;
 }
 
 function generateTimeOptions() {
@@ -66,7 +67,8 @@ export function AdminSettings() {
         enable_lunch: settings.enable_lunch,
         lunch_start: settings.lunch_start,
         lunch_end: settings.lunch_end,
-        appLogo: settings.appLogo
+        appLogo: settings.appLogo,
+        whatsappNumber: settings.whatsappNumber
     });
 
     const [passwordData, setPasswordData] = useState({
@@ -96,7 +98,8 @@ export function AdminSettings() {
             enable_lunch: settings.enable_lunch,
             lunch_start: settings.lunch_start,
             lunch_end: settings.lunch_end,
-            appLogo: settings.appLogo
+            appLogo: settings.appLogo,
+            whatsappNumber: settings.whatsappNumber
         });
         setLoading(false);
     }, [settings]);
@@ -429,6 +432,24 @@ export function AdminSettings() {
                                 />
                                 <p className="text-[10px] text-gray-400 mt-1 ml-1 italic">
                                     Este e-mail será usado para envio de confirmações e links de nova senha.
+                                </p>
+                            </div>
+
+                            {/* WhatsApp Number */}
+                            <div className="pt-4 border-t border-gray-100">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    <Phone className="w-4 h-4 inline mr-1.5 text-green-500" />
+                                    Número de WhatsApp (para confirmações de agendamento)
+                                </label>
+                                <input
+                                    type="tel"
+                                    value={config.whatsappNumber}
+                                    onChange={(e) => setConfig(prev => ({ ...prev, whatsappNumber: e.target.value }))}
+                                    placeholder="5511999999999"
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all bg-white text-gray-800"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 ml-1 italic">
+                                    Informe o número com código do país e DDD, sem espaços ou símbolos. Ex: 5511999999999
                                 </p>
                             </div>
 
