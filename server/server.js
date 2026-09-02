@@ -14,9 +14,17 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = 'your_secret_key'; // In production, use environment variable
+const requiredEnvironmentVariables = ['JWT_SECRET', 'APP_URL'];
+const missingEnvironmentVariables = requiredEnvironmentVariables.filter((name) => !process.env[name]);
 
-app.use(cors());
+if (missingEnvironmentVariables.length > 0) {
+    throw new Error(`Variáveis de ambiente obrigatórias não configuradas: ${missingEnvironmentVariables.join(', ')}`);
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const APP_URL = process.env.APP_URL.replace(/\/$/, '');
+
+app.use(cors({ origin: APP_URL }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
@@ -37,12 +45,9 @@ const upload = multer({
     }
 });
 
-// Request logging middleware
+// Request logging middleware (request bodies may contain credentials or tokens)
 app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-    if (['POST', 'PUT'].includes(req.method)) {
-        console.log('Body:', JSON.stringify(req.body));
-    }
     next();
 });
 
@@ -58,7 +63,7 @@ const authenticateToken = (req, res, next) => {
 
     if (!token) return res.status(401).json({ error: 'Token de autenticação ausente' });
 
-    jwt.verify(token, SECRET_KEY, (err, user) => {
+    jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
             console.error('JWT Verify Error:', err.message);
             return res.status(403).json({ error: 'Sessão inválida ou expirada. Por favor, faça login novamente.' });
@@ -86,7 +91,7 @@ app.post('/api/auth/register', async (req, res, next) => {
         );
 
         const userId = result.rows[0].id;
-        const token = jwt.sign({ id: userId, name, email, role: 'user' }, SECRET_KEY, { expiresIn: '24h' });
+        const token = jwt.sign({ id: userId, name, email, role: 'user' }, JWT_SECRET, { expiresIn: '24h' });
         console.log(`Registration successful for ID: ${userId}`);
         res.status(201).json({ token, user: { id: userId, name, email, role: 'user' } });
     } catch (err) {
@@ -121,7 +126,7 @@ app.post('/api/auth/login', async (req, res, next) => {
             return res.status(401).json({ error: 'Senha incorreta' });
         }
 
-        const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '24h' });
+        const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
         console.log(`Login successful for user: ${email} (Role: ${user.role})`);
         res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (err) {
@@ -183,12 +188,11 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
         // Generate a reset token (short-lived: 1 hour)
         const resetToken = jwt.sign(
             { id: user.id, type: 'reset' },
-            SECRET_KEY,
+            JWT_SECRET,
             { expiresIn: '1h' }
         );
 
-        // Simulation: Get the app base URL (usually the origin of the request or hardcoded for dev)
-        const resetLink = `http://localhost:5173/reset-password?token=${resetToken}`;
+        const resetLink = `${APP_URL}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
         try {
             await sendPasswordResetEmail(email, resetLink);
@@ -215,7 +219,7 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, SECRET_KEY);
+        const decoded = jwt.verify(token, JWT_SECRET);
 
         if (decoded.type !== 'reset') {
             return res.status(400).json({ error: 'Token inválido para redefinição de senha' });
@@ -515,11 +519,14 @@ app.delete('/api/bookings/:id/force', authenticateToken, async (req, res, next) 
 // Global error handling middleware
 app.use((err, req, res, next) => {
     console.error('SERVER ERROR:', err.stack);
-    res.status(500).json({
-        error: 'Internal Server Error',
-        message: err.message,
-        stack: err.stack
-    });
+    const response = { error: 'Erro interno do servidor' };
+
+    if (process.env.NODE_ENV !== 'production') {
+        response.message = String(err.message || 'Erro desconhecido')
+            .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, '[CONNECTION_STRING_REDACTED]');
+    }
+
+    res.status(500).json(response);
 });
 
 process.on('uncaughtException', (err) => {

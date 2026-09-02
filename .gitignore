@@ -26,6 +26,8 @@ dist-ssr
 # Database and Secrets
 *.sqlite
 .env
+.env.*
+!.env.example
 
 # Uploads
 server/uploads/*

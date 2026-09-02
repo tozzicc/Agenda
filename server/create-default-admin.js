@@ -1,16 +1,24 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
+import 'dotenv/config';
 
 const { Pool } = pg;
 
+const requiredEnvironmentVariables = ['DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'];
+const missingEnvironmentVariables = requiredEnvironmentVariables.filter((name) => !process.env[name]);
+
+if (missingEnvironmentVariables.length > 0) {
+    throw new Error(`Variáveis de ambiente obrigatórias não configuradas: ${missingEnvironmentVariables.join(', ')}`);
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgres://4791a9f3780af424b46763a08ecf87f249532358dd01d7ff76b3e622b3429de5:sk_wYIl9I2_2ziUJHZ26rmBK@db.prisma.io:5432/postgres?sslmode=require',
+    connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
 });
 
-const name = 'Administrador';
-const email = 'admin@admin.com';
-const password = 'admin123';
+const name = process.env.ADMIN_NAME || 'Administrador';
+const email = process.env.ADMIN_EMAIL;
+const password = process.env.ADMIN_PASSWORD;
 const hashedPassword = bcrypt.hashSync(password, 10);
 
 try {
@@ -18,10 +26,7 @@ try {
         "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO UPDATE SET role = 'admin'",
         [name, email, hashedPassword, 'admin']
     );
-    console.log('--- ACESSO ADMINISTRATIVO ---');
-    console.log('Email: admin@admin.com');
-    console.log('Senha: admin123');
-    console.log('-----------------------------');
+    console.log('Usuário administrador criado ou atualizado com sucesso.');
 } catch (err) {
     console.error('Erro ao criar admin:', err.message);
 } finally {

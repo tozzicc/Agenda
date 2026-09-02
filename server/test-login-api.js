@@ -2,7 +2,7 @@ try {
     const response = await fetch('http://127.0.0.1:3000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'admin@admin.com', password: 'admin123' }),
+        body: JSON.stringify({ email: process.env.TEST_EMAIL, password: process.env.TEST_PASSWORD }),
     });
 
     console.log('STATUS:', response.status);

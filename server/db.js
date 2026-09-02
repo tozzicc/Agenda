@@ -2,8 +2,12 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL não configurada');
+}
+
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgres://4791a9f3780af424b46763a08ecf87f249532358dd01d7ff76b3e622b3429de5:sk_Kr6H_sfuBzJRlA-VFnzPu@db.prisma.io:5432/postgres?sslmode=require&pool=true',
+    connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
 });
 

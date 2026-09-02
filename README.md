@@ -1,5 +1,17 @@
 # React + TypeScript + Vite
 
+## Configuração do ambiente
+
+1. Copie `.env.example` para `.env`.
+2. Configure `DATABASE_URL` com a conexão PostgreSQL.
+3. Gere um `JWT_SECRET` forte e exclusivo para o ambiente.
+4. Configure `APP_URL` com a origem do frontend (por exemplo, `http://localhost:5173` no desenvolvimento).
+5. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_SECURE` para habilitar os e-mails.
+6. Execute `npm run server` para o backend e `npm run dev` para o frontend.
+
+O utilitário opcional `node server/create-default-admin.js` também requer `ADMIN_EMAIL` e `ADMIN_PASSWORD`; `ADMIN_NAME` é opcional.
+
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
