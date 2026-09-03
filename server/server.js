@@ -8,6 +8,7 @@ import multer from 'multer';
 import 'dotenv/config';
 import { query } from './db.js';
 import { sendPasswordResetEmail, sendBookingConfirmationEmail } from './mailer.js';
+import { validateScheduleAvailability } from './availability.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -407,6 +408,11 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
     }
 
     try {
+        const availability = await validateScheduleAvailability(date, time);
+        if (!availability.valid) {
+            return res.status(availability.status).json({ error: availability.error });
+        }
+
         // Check for double booking
         const existing = await query(
             "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active'",
@@ -427,6 +433,9 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
 
         res.status(201).json({ id: result.rows[0].id, message: 'Agendamento realizado com sucesso' });
     } catch (err) {
+        if (err.code === '23505' && err.constraint === 'appointments_active_date_time_unique') {
+            return res.status(409).json({ error: 'Este horário já foi reservado' });
+        }
         next(err);
     }
 });
@@ -449,6 +458,11 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
             return res.status(403).json({ error: 'Não autorizado' });
         }
 
+        const availability = await validateScheduleAvailability(date, time);
+        if (!availability.valid) {
+            return res.status(availability.status).json({ error: availability.error });
+        }
+
         // Check availability if date/time changed
         const conflict = await query(
             "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active' AND id != $3",
@@ -464,6 +478,9 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
         );
         res.json({ message: 'Agendamento atualizado com sucesso' });
     } catch (err) {
+        if (err.code === '23505' && err.constraint === 'appointments_active_date_time_unique') {
+            return res.status(409).json({ error: 'Este horário já está ocupado' });
+        }
         next(err);
     }
 });

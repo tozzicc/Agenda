@@ -67,6 +67,27 @@ async function initializeDatabase() {
             );
         }
 
+        const duplicateSlots = await pool.query(`
+            SELECT date, time, array_agg(id ORDER BY id) AS ids
+            FROM appointments
+            WHERE status = 'active'
+            GROUP BY date, time
+            HAVING COUNT(*) > 1
+        `);
+
+        if (duplicateSlots.rows.length === 0) {
+            await pool.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS appointments_active_date_time_unique
+                ON appointments (date, time)
+                WHERE status = 'active'
+            `);
+        } else {
+            console.error(
+                'Índice de exclusividade não criado: existem horários ativos duplicados.',
+                duplicateSlots.rows
+            );
+        }
+
         console.log('Connected to PostgreSQL database. Tables initialized.');
     } catch (err) {
         console.error('Error initializing database:', err.message);
