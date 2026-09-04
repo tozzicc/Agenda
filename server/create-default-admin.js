@@ -1,6 +1,7 @@
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import { validatePassword } from './password-policy.js';
 
 const { Pool } = pg;
 
@@ -19,6 +20,8 @@ const pool = new Pool({
 const name = process.env.ADMIN_NAME || 'Administrador';
 const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
+const passwordError = validatePassword(password);
+if (passwordError) throw new Error(`ADMIN_PASSWORD inválida: ${passwordError}`);
 const hashedPassword = bcrypt.hashSync(password, 10);
 
 try {

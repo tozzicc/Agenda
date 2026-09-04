@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { rateLimit } from 'express-rate-limit';
+import { createCredentialFingerprint, credentialFingerprintMatches, validatePassword } from './password-policy.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
@@ -24,7 +26,12 @@ if (missingEnvironmentVariables.length > 0) {
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.APP_URL.replace(/\/$/, '');
-
+const authRateLimitWindowMs = 15 * 60 * 1000;
+const createAuthRateLimiter = (limit) => rateLimit({ windowMs: authRateLimitWindowMs, limit, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' } });
+const loginRateLimiter = createAuthRateLimiter(20);
+const registerRateLimiter = createAuthRateLimiter(10);
+const forgotPasswordRateLimiter = createAuthRateLimiter(10);
+const resetPasswordRateLimiter = createAuthRateLimiter(10);
 app.use(cors({ origin: APP_URL }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
@@ -76,13 +83,16 @@ const authenticateToken = (req, res, next) => {
 
 // --- Auth Routes ---
 
-app.post('/api/auth/register', async (req, res, next) => {
+app.post('/api/auth/register', registerRateLimiter, async (req, res, next) => {
     const { name, email, password } = req.body;
     console.log(`Registration attempt for email: ${email}`);
 
     if (!name || !email || !password) {
         return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
     }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
 
     try {
         const hashedPassword = bcrypt.hashSync(password, 10);
@@ -104,7 +114,7 @@ app.post('/api/auth/register', async (req, res, next) => {
     }
 });
 
-app.post('/api/auth/login', async (req, res, next) => {
+app.post('/api/auth/login', loginRateLimiter, async (req, res, next) => {
     const { email, password } = req.body;
     console.log(`Login attempt for email: ${email}`);
 
@@ -144,6 +154,9 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res, next) 
         return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias' });
     }
 
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) return res.status(400).json({ error: passwordError });
+
     try {
         const result = await query('SELECT password FROM users WHERE id = $1', [userId]);
         const user = result.rows[0];
@@ -168,7 +181,7 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res, next) 
 });
 
 // Forgot Password - Generate reset token and log link
-app.post('/api/auth/forgot-password', async (req, res, next) => {
+app.post('/api/auth/forgot-password', forgotPasswordRateLimiter, async (req, res, next) => {
     const { email } = req.body;
     console.log(`Forgot password request for: ${email}`);
 
@@ -177,7 +190,7 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
     }
 
     try {
-        const result = await query('SELECT id, name FROM users WHERE email = $1', [email]);
+        const result = await query('SELECT id, name, password FROM users WHERE email = $1', [email]);
         const user = result.rows[0];
 
         if (!user) {
@@ -188,7 +201,7 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
 
         // Generate a reset token (short-lived: 1 hour)
         const resetToken = jwt.sign(
-            { id: user.id, type: 'reset' },
+            { id: user.id, type: 'reset', credential: createCredentialFingerprint(user.password, JWT_SECRET) },
             JWT_SECRET,
             { expiresIn: '1h' }
         );
@@ -212,12 +225,15 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
 });
 
 // Reset Password - Verify token and update password
-app.post('/api/auth/reset-password', async (req, res, next) => {
+app.post('/api/auth/reset-password', resetPasswordRateLimiter, async (req, res, next) => {
     const { token, newPassword } = req.body;
 
     if (!token || !newPassword) {
         return res.status(400).json({ error: 'Token e nova senha são obrigatórios' });
     }
+
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) return res.status(400).json({ error: passwordError });
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
@@ -226,8 +242,16 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
             return res.status(400).json({ error: 'Token inválido para redefinição de senha' });
         }
 
+        const userResult = await query('SELECT password FROM users WHERE id = $1', [decoded.id]);
+        const user = userResult.rows[0];
+        if (!user || !credentialFingerprintMatches(decoded.credential, user.password, JWT_SECRET)) {
+            return res.status(400).json({ error: 'Link de recuperação inválido ou já utilizado' });
+        }
         const hashedPassword = bcrypt.hashSync(newPassword, 10);
-        await query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, decoded.id]);
+        const updateResult = await query('UPDATE users SET password = $1 WHERE id = $2 AND password = $3', [hashedPassword, decoded.id, user.password]);
+        if (updateResult.rowCount !== 1) {
+            return res.status(400).json({ error: 'Link de recuperação inválido ou já utilizado' });
+        }
 
         console.log(`Password reset successfully for user ID: ${decoded.id}`);
         res.json({ message: 'Senha redefinida com sucesso' });
@@ -512,19 +536,17 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res, next) => {
 // Hard Delete booking
 app.delete('/api/bookings/:id/force', authenticateToken, async (req, res, next) => {
     const { id } = req.params;
-    const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
+
+    if (!isAdmin) {
+        return res.status(403).json({ error: 'Apenas administradores podem excluir agendamentos permanentemente' });
+    }
 
     try {
         const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
         const booking = bookingResult.rows[0];
 
         if (!booking) return res.status(404).json({ error: 'Agendamento não encontrado' });
-
-        // Allowed if owner OR admin
-        if (booking.user_id !== userId && !isAdmin) {
-            return res.status(403).json({ error: 'Não autorizado' });
-        }
 
         await query("DELETE FROM appointments WHERE id = $1", [id]);
         res.json({ message: 'Agendamento removido permanentemente' });

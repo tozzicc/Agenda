@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import { escapeHtml } from './password-policy.js';
+
 
 /**
  * Configure your SMTP settings here or via environment variables.
@@ -20,6 +22,7 @@ const transporter = nodemailer.createTransport({
 });
 
 export const sendPasswordResetEmail = async (to, resetLink) => {
+    const safeResetLink = escapeHtml(resetLink);
     const mailOptions = {
         from: `"Agenda" <${process.env.SMTP_USER}>`,
         to: to,
@@ -30,7 +33,7 @@ export const sendPasswordResetEmail = async (to, resetLink) => {
                 <p>Olá,</p>
                 <p>Você solicitou a redefinição de sua senha. Clique no botão abaixo para criar uma nova senha:</p>
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="${resetLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Redefinir Minha Senha</a>
+                    <a href="${safeResetLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Redefinir Minha Senha</a>
                 </div>
                 <p style="color: #64748b; font-size: 14px;">Se você não solicitou isso, pode ignorar este e-mail com segurança.</p>
                 <p style="color: #64748b; font-size: 14px;">Este link expirará em 1 hora.</p>
@@ -54,6 +57,11 @@ export const sendBookingConfirmationEmail = async (to, bookingDetails) => {
 
     // Format date for display (assuming YYYY-MM-DD)
     const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+    const safeName = escapeHtml(name);
+    const safeDate = escapeHtml(formattedDate);
+    const safeTime = escapeHtml(time);
+    const safePhone = escapeHtml(phone);
+    const safeNotes = escapeHtml(notes);
 
     const mailOptions = {
         from: `"Agenda" <${process.env.SMTP_USER}>`,
@@ -62,14 +70,14 @@ export const sendBookingConfirmationEmail = async (to, bookingDetails) => {
         html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
                 <h2 style="color: #4f46e5; text-align: center;">Agendamento Confirmado!</h2>
-                <p>Olá <strong>${name}</strong>,</p>
+                <p>Olá <strong>${safeName}</strong>,</p>
                 <p>Seu agendamento foi realizado com sucesso. Confira os detalhes abaixo:</p>
                 
                 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 5px 0;"><strong>Data:</strong> ${formattedDate}</p>
-                    <p style="margin: 5px 0;"><strong>Horário:</strong> ${time}</p>
-                    <p style="margin: 5px 0;"><strong>Telefone:</strong> ${phone}</p>
-                    ${notes ? `<p style="margin: 5px 0;"><strong>Observações:</strong> ${notes}</p>` : ''}
+                    <p style="margin: 5px 0;"><strong>Data:</strong> ${safeDate}</p>
+                    <p style="margin: 5px 0;"><strong>Horário:</strong> ${safeTime}</p>
+                    <p style="margin: 5px 0;"><strong>Telefone:</strong> ${safePhone}</p>
+                    ${notes ? `<p style="margin: 5px 0;"><strong>Observações:</strong> ${safeNotes}</p>` : ''}
                 </div>
 
                 <p style="color: #64748b; font-size: 14px;">Se precisar cancelar ou alterar o horário, acesse sua conta no sistema.</p>

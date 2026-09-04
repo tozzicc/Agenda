@@ -204,7 +204,7 @@ export function MyBookings() {
                                             </button>
                                         </>
                                     )}
-                                    {booking.status === 'cancelled' && (
+                                    {booking.status === 'cancelled' && user?.role === 'admin' && (
                                         <button
                                             onClick={() => handleDelete(booking.id)}
                                             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-500 rounded-lg hover:bg-gray-100 transition-colors"
