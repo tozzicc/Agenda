@@ -12,7 +12,9 @@ interface Settings {
     lunch_start: string;
     lunch_end: string;
     appLogo: string;
+    companyName: string;
     whatsappNumber: string;
+    demoMode: boolean;
 }
 
 interface SettingsContextType {
@@ -33,7 +35,9 @@ const defaultSettings: Settings = {
     lunch_start: '12:00',
     lunch_end: '13:00',
     appLogo: '',
-    whatsappNumber: ''
+    companyName: 'Agenda',
+    whatsappNumber: '',
+    demoMode: false
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -59,7 +63,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                     lunch_start: data.lunch_start || '12:00',
                     lunch_end: data.lunch_end || '13:00',
                     appLogo: data.appLogo || '',
-                    whatsappNumber: data.whatsappNumber || ''
+                    companyName: data.companyName?.trim() || 'Agenda',
+                    whatsappNumber: data.whatsappNumber || '',
+                    demoMode: data.demoMode === true
                 });
             }
         } catch (error) {
@@ -72,6 +78,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         fetchSettings();
     }, []);
+
+    useEffect(() => {
+        document.title = settings.companyName || 'Agenda';
+    }, [settings.companyName]);
 
     const refreshSettings = async () => {
         await fetchSettings();

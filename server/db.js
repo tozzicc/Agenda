@@ -1,10 +1,9 @@
 import pg from 'pg';
+import { requireEnvironmentVariables } from './environment.js';
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL não configurada');
-}
+requireEnvironmentVariables(process.env, ['DATABASE_URL']);
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -17,7 +16,7 @@ export async function query(text, params) {
 }
 
 // Initialize database tables
-async function initializeDatabase() {
+export async function initializeDatabase() {
     try {
         // Create users table with role
         await pool.query(`CREATE TABLE IF NOT EXISTS users (
@@ -58,6 +57,8 @@ async function initializeDatabase() {
             ['enable_lunch', 'false'],
             ['lunch_start', '12:00'],
             ['lunch_end', '13:00'],
+            ['company_name', 'Agenda'],
+            ['demo_mode', 'false'],
             ['whatsapp_number', '']
         ];
         for (const [key, value] of defaults) {
@@ -95,6 +96,6 @@ async function initializeDatabase() {
     }
 }
 
-initializeDatabase();
+export const databaseReady = initializeDatabase();
 
 export default pool;

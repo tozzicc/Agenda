@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { Navbar } from '../components/Navbar';
-import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff, Phone } from 'lucide-react';
+import { Settings, Clock, Save, CheckCircle, Mail, Lock, Eye, EyeOff, Phone, RotateCcw } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface ScheduleConfig {
@@ -17,6 +17,7 @@ interface ScheduleConfig {
     lunch_start: string;
     lunch_end: string;
     appLogo: string;
+    companyName: string;
     whatsappNumber: string;
 }
 
@@ -68,6 +69,7 @@ export function AdminSettings() {
         lunch_start: settings.lunch_start,
         lunch_end: settings.lunch_end,
         appLogo: settings.appLogo,
+        companyName: settings.companyName,
         whatsappNumber: settings.whatsappNumber
     });
 
@@ -85,6 +87,8 @@ export function AdminSettings() {
     const [logoUploading, setLogoUploading] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
+    const [demoSaving, setDemoSaving] = useState(false);
+    const [demoResetting, setDemoResetting] = useState(false);
 
     useEffect(() => {
         setConfig({
@@ -99,6 +103,7 @@ export function AdminSettings() {
             lunch_start: settings.lunch_start,
             lunch_end: settings.lunch_end,
             appLogo: settings.appLogo,
+            companyName: settings.companyName,
             whatsappNumber: settings.whatsappNumber
         });
         setLoading(false);
@@ -178,6 +183,48 @@ export function AdminSettings() {
         }
     };
 
+    const handleDemoToggle = async () => {
+        setDemoSaving(true);
+        setError('');
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/settings/demo-mode', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ enabled: !settings.demoMode })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Erro ao alterar modo demonstração');
+            await refreshSettings();
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Erro ao conectar com o servidor');
+        } finally {
+            setDemoSaving(false);
+        }
+    };
+
+    const handleDemoReset = async () => {
+        setDemoResetting(true);
+        setError('');
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/api/settings/demo-reset', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Erro ao restaurar demonstração');
+            setSaved(true);
+            setTimeout(() => setSaved(false), 3000);
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : 'Erro ao conectar com o servidor');
+        } finally {
+            setDemoResetting(false);
+        }
+    };
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setPasswordError('');
@@ -261,9 +308,51 @@ export function AdminSettings() {
                         </div>
                     </div>
 
+                    <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h2 className="font-bold text-amber-950">Modo Demonstração</h2>
+                                    {settings.demoMode && <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-800">ATIVO</span>}
+                                </div>
+                                <p className="mt-1 text-sm text-amber-800">Usa somente dados fictícios temporários e preserva os agendamentos reais.</p>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={settings.demoMode}
+                                onClick={handleDemoToggle}
+                                disabled={demoSaving}
+                                className={cn('relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50', settings.demoMode ? 'bg-amber-600' : 'bg-gray-300')}
+                            >
+                                <span className={cn('absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform', settings.demoMode ? 'translate-x-5' : 'translate-x-0')} />
+                                <span className="sr-only">Alternar modo demonstração</span>
+                            </button>
+                        </div>
+                        {settings.demoMode && (
+                            <button type="button" onClick={handleDemoReset} disabled={demoResetting} className="mt-4 flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50">
+                                <RotateCcw className="h-4 w-4" />
+                                {demoResetting ? 'Restaurando...' : 'Restaurar dados fictícios'}
+                            </button>
+                        )}
+                    </div>
                     {/* Logo Upload Section */}
                     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden mb-8">
                         <div className="p-6 sm:p-8 space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Nome comercial da empresa/sistema
+                                </label>
+                                <input
+                                    type="text"
+                                    value={config.companyName}
+                                    onChange={(e) => setConfig(prev => ({ ...prev, companyName: e.target.value }))}
+                                    maxLength={100}
+                                    required
+                                    placeholder="Agenda"
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all bg-white text-gray-800"
+                                />
+                            </div>
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
                                     <Settings className="w-4 h-4 text-indigo-700" />
@@ -305,7 +394,7 @@ export function AdminSettings() {
                                             className="hidden"
                                             accept="image/*"
                                             onChange={handleLogoUpload}
-                                            disabled={logoUploading}
+                                            disabled={logoUploading || settings.demoMode}
                                         />
                                     </label>
                                     {config.appLogo && (
@@ -324,6 +413,7 @@ export function AdminSettings() {
                     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
                         {/* Form */}
                         <div className="p-6 sm:p-8 space-y-6">
+
                             {/* Start and End Time */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div>
@@ -571,7 +661,7 @@ export function AdminSettings() {
                             {/* Save Button */}
                             <button
                                 onClick={handleSave}
-                                disabled={saving || previewSlots.length === 0}
+                                disabled={saving || previewSlots.length === 0 || settings.demoMode}
                                 className={cn(
                                     "w-full py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center gap-2",
                                     saved
@@ -621,6 +711,7 @@ export function AdminSettings() {
                     {/* Change Password Section */}
                     <div className="mt-8 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
                         <div className="p-6 sm:p-8 space-y-6">
+
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
                                     <Lock className="w-4 h-4 text-red-700" />

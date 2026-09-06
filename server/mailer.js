@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { escapeHtml } from './password-policy.js';
+import { query } from './db.js';
 
 
 /**
@@ -21,12 +22,26 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+async function getCompanyName() {
+    try {
+        const result = await query("SELECT value FROM settings WHERE key = 'company_name'");
+        const companyName = result.rows[0]?.value?.trim();
+        return companyName || 'Agenda';
+    } catch (error) {
+        console.error('Error loading company name for email:', error);
+        return 'Agenda';
+    }
+}
+
 export const sendPasswordResetEmail = async (to, resetLink) => {
     const safeResetLink = escapeHtml(resetLink);
+    const companyName = await getCompanyName();
+    const safeCompanyName = escapeHtml(companyName);
+    const headerCompanyName = companyName.replace(/[\r\n"]/g, '');
     const mailOptions = {
-        from: `"Agenda" <${process.env.SMTP_USER}>`,
+        from: `"${headerCompanyName}" <${process.env.SMTP_USER}>`,
         to: to,
-        subject: 'Recuperação de Senha - Agenda',
+        subject: `Recuperação de Senha - ${headerCompanyName}`,
         html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
                 <h2 style="color: #4f46e5; text-align: center;">Recuperação de Senha</h2>
@@ -38,7 +53,7 @@ export const sendPasswordResetEmail = async (to, resetLink) => {
                 <p style="color: #64748b; font-size: 14px;">Se você não solicitou isso, pode ignorar este e-mail com segurança.</p>
                 <p style="color: #64748b; font-size: 14px;">Este link expirará em 1 hora.</p>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-                <p style="color: #94a3b8; font-size: 12px; text-align: center;">© ${new Date().getFullYear()} Agenda. Todos os direitos reservados.</p>
+                <p style="color: #94a3b8; font-size: 12px; text-align: center;">© ${new Date().getFullYear()} ${safeCompanyName}. Todos os direitos reservados.</p>
             </div>
         `,
     };
@@ -62,11 +77,14 @@ export const sendBookingConfirmationEmail = async (to, bookingDetails) => {
     const safeTime = escapeHtml(time);
     const safePhone = escapeHtml(phone);
     const safeNotes = escapeHtml(notes);
+    const companyName = await getCompanyName();
+    const safeCompanyName = escapeHtml(companyName);
+    const headerCompanyName = companyName.replace(/[\r\n"]/g, '');
 
     const mailOptions = {
-        from: `"Agenda" <${process.env.SMTP_USER}>`,
+        from: `"${headerCompanyName}" <${process.env.SMTP_USER}>`,
         to: to,
-        subject: 'Confirmação de Agendamento - Agenda',
+        subject: `Confirmação de Agendamento - ${headerCompanyName}`,
         html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
                 <h2 style="color: #4f46e5; text-align: center;">Agendamento Confirmado!</h2>
@@ -82,7 +100,7 @@ export const sendBookingConfirmationEmail = async (to, bookingDetails) => {
 
                 <p style="color: #64748b; font-size: 14px;">Se precisar cancelar ou alterar o horário, acesse sua conta no sistema.</p>
                 <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-                <p style="color: #94a3b8; font-size: 12px; text-align: center;">© ${new Date().getFullYear()} Agenda. Todos os direitos reservados.</p>
+                <p style="color: #94a3b8; font-size: 12px; text-align: center;">© ${new Date().getFullYear()} ${safeCompanyName}. Todos os direitos reservados.</p>
             </div>
         `,
     };

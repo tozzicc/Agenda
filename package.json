@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "node --test server/*.test.js",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server/server.js"
+    "server": "node server/server.js",
+    "create-admin": "node server/create-default-admin.js",
+    "seed-demo": "node server/seed-demo.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
@@ -22,7 +25,7 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.563.0",
     "multer": "^2.1.0",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^10.0.0",
     "pg": "^8.13.0",
     "react": "^19.2.0",
     "react-day-picker": "^9.13.2",

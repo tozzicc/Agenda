@@ -22,7 +22,12 @@ export function Navbar() {
                     ) : (
                         <Calendar className="w-6 h-6" />
                     )}
-                    <span>Agenda</span>
+                    <span>{settings.companyName}</span>
+                    {settings.demoMode && user?.role === 'admin' && (
+                        <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                            Modo Demonstração
+                        </span>
+                    )}
                 </Link>
                 <div className="flex items-center gap-4">
                     {user ? (

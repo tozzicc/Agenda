@@ -8,7 +8,7 @@ import { TimeSlots } from '../components/TimeSlots';
 import { cn } from '../lib/utils';
 
 interface Appointment {
-    id: number;
+    id: number | string;
     date: string;
     time: string;
     name: string;
@@ -47,7 +47,7 @@ export function MyBookings() {
         }
     };
 
-    const handleCancel = async (id: number) => {
+    const handleCancel = async (id: number | string) => {
         if (!confirm('Tem certeza que deseja cancelar este agendamento?')) return;
 
         try {
@@ -68,7 +68,7 @@ export function MyBookings() {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: number | string) => {
         if (!confirm('Tem certeza que deseja EXCLUIR PERMANENTEMENTE este agendamento? Esta ação não pode ser desfeita.')) return;
 
         try {

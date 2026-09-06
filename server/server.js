@@ -8,21 +8,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import 'dotenv/config';
-import { query } from './db.js';
+import { databaseReady, query } from './db.js';
 import { sendPasswordResetEmail, sendBookingConfirmationEmail } from './mailer.js';
 import { validateScheduleAvailability } from './availability.js';
+import { requireEnvironmentVariables } from './environment.js';
+import { cancelDemoAppointment, createDemoAppointment, deleteDemoAppointment, getDemoBookedTimes, getDemoSettings, isDemoModeValue, listDemoAppointments, resetDemoAppointments, updateDemoAppointment } from './demo-mode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
-const requiredEnvironmentVariables = ['JWT_SECRET', 'APP_URL'];
-const missingEnvironmentVariables = requiredEnvironmentVariables.filter((name) => !process.env[name]);
-
-if (missingEnvironmentVariables.length > 0) {
-    throw new Error(`Variáveis de ambiente obrigatórias não configuradas: ${missingEnvironmentVariables.join(', ')}`);
-}
+requireEnvironmentVariables(process.env, ['JWT_SECRET', 'APP_URL']);
+await databaseReady;
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.APP_URL.replace(/\/$/, '');
@@ -32,6 +30,11 @@ const loginRateLimiter = createAuthRateLimiter(20);
 const registerRateLimiter = createAuthRateLimiter(10);
 const forgotPasswordRateLimiter = createAuthRateLimiter(10);
 const resetPasswordRateLimiter = createAuthRateLimiter(10);
+
+async function isDemoModeActive() {
+    const result = await query("SELECT value FROM settings WHERE key = 'demo_mode'");
+    return isDemoModeValue(result.rows[0]?.value);
+}
 app.use(cors({ origin: APP_URL }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
@@ -270,10 +273,11 @@ app.post('/api/auth/reset-password', resetPasswordRateLimiter, async (req, res, 
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
         const result = await query(
-            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end', 'app_logo', 'whatsapp_number')"
+            "SELECT key, value FROM settings WHERE key IN ('schedule_start', 'schedule_end', 'schedule_interval', 'allow_saturday', 'allow_sunday', 'blocked_periods', 'admin_email', 'enable_lunch', 'lunch_start', 'lunch_end', 'app_logo', 'whatsapp_number', 'company_name', 'demo_mode')"
         );
         const settings = {};
         result.rows.forEach(row => { settings[row.key] = row.value; });
+        if (isDemoModeValue(settings.demo_mode)) return res.json(getDemoSettings());
         res.json({
             start: settings.schedule_start || '09:00',
             end: settings.schedule_end || '17:00',
@@ -286,20 +290,64 @@ app.get('/api/settings/schedule', async (req, res, next) => {
             lunch_start: settings.lunch_start || '12:00',
             lunch_end: settings.lunch_end || '13:00',
             appLogo: settings.app_logo || '',
-            whatsappNumber: settings.whatsapp_number || ''
+            whatsappNumber: settings.whatsapp_number || '',
+            companyName: settings.company_name?.trim() || 'Agenda',
+            demoMode: false
         });
     } catch (err) {
         next(err);
     }
 });
 
+// Demo mode controls (admin only)
+app.put('/api/settings/demo-mode', authenticateToken, async (req, res, next) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Apenas administradores podem alterar o modo demonstração' });
+    }
+    if (typeof req.body.enabled !== 'boolean') {
+        return res.status(400).json({ error: 'O campo enabled deve ser booleano' });
+    }
+    try {
+        await query(
+            'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+            ['demo_mode', String(req.body.enabled)]
+        );
+        res.json({ demoMode: req.body.enabled });
+    } catch (error) {
+        next(error);
+    }
+});
+
+app.post('/api/settings/demo-reset', authenticateToken, async (req, res, next) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Apenas administradores podem restaurar a demonstração' });
+    }
+    try {
+        if (!await isDemoModeActive()) {
+            return res.status(409).json({ error: 'O modo demonstração não está ativo' });
+        }
+        const appointments = resetDemoAppointments();
+        res.json({ message: 'Dados da demonstração restaurados', appointments });
+    } catch (error) {
+        next(error);
+    }
+});
 // Update schedule settings (admin only)
 app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Apenas administradores podem alterar configurações' });
     }
 
-    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end, appLogo, whatsappNumber } = req.body;
+    if (await isDemoModeActive()) {
+        return res.status(409).json({ error: 'Desative o modo demonstração para alterar configurações operacionais' });
+    }
+
+    const { start, end, interval, allow_saturday, allow_sunday, blockedPeriods, adminEmail, enable_lunch, lunch_start, lunch_end, appLogo, whatsappNumber, companyName } = req.body;
+    const normalizedCompanyName = typeof companyName === 'string' ? companyName.trim() : '';
+
+    if (!normalizedCompanyName || normalizedCompanyName.length > 100) {
+        return res.status(400).json({ error: 'O nome comercial deve ter entre 1 e 100 caracteres' });
+    }
 
     if (!start || !end || !interval) {
         return res.status(400).json({ error: 'Campos obrigatórios: start, end, interval' });
@@ -328,6 +376,7 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             ['lunch_start', lunch_start || '12:00'],
             ['lunch_end', lunch_end || '13:00'],
             ['app_logo', appLogo || ''],
+            ['company_name', normalizedCompanyName],
             ['whatsapp_number', whatsappNumber || '']
         ];
 
@@ -351,6 +400,7 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
             lunch_start,
             lunch_end,
             appLogo,
+            companyName: normalizedCompanyName,
             whatsappNumber
         });
     } catch (err) {
@@ -362,6 +412,10 @@ app.put('/api/settings/schedule', authenticateToken, async (req, res, next) => {
 app.post('/api/settings/logo', authenticateToken, upload.single('logo'), async (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Apenas administradores podem enviar logos' });
+    }
+
+    if (await isDemoModeActive()) {
+        return res.status(409).json({ error: 'O logo real não pode ser alterado no modo demonstração' });
     }
 
     if (!req.file) {
@@ -390,6 +444,7 @@ app.get('/api/bookings', async (req, res, next) => {
     if (!date) return res.status(400).json({ error: 'Data é obrigatória' });
 
     try {
+        if (await isDemoModeActive()) return res.json(getDemoBookedTimes(date));
         const result = await query(
             "SELECT time FROM appointments WHERE date = $1 AND status = 'active'",
             [date]
@@ -405,6 +460,7 @@ app.get('/api/my-bookings', authenticateToken, async (req, res, next) => {
     const isAdmin = req.user.role === 'admin';
 
     try {
+        if (await isDemoModeActive()) return res.json(listDemoAppointments(req.user));
         let result;
         if (isAdmin) {
             result = await query(
@@ -432,6 +488,11 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
     }
 
     try {
+        if (await isDemoModeActive()) {
+            const demoResult = createDemoAppointment(req.user, { date, time, name, phone, notes, email: req.user.email });
+            if (!demoResult.valid) return res.status(demoResult.status).json({ error: demoResult.error });
+            return res.status(201).json({ id: demoResult.appointment.id, message: 'Agendamento de demonstração realizado com sucesso' });
+        }
         const availability = await validateScheduleAvailability(date, time);
         if (!availability.valid) {
             return res.status(availability.status).json({ error: availability.error });
@@ -472,6 +533,11 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
     const isAdmin = req.user.role === 'admin';
 
     try {
+        if (await isDemoModeActive()) {
+            const demoResult = updateDemoAppointment(id, req.user, { date, time, notes });
+            if (!demoResult.appointment) return res.status(demoResult.status).json({ error: demoResult.error });
+            return res.json({ message: 'Agendamento de demonstração atualizado com sucesso' });
+        }
         const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
         const booking = bookingResult.rows[0];
 
@@ -516,6 +582,11 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res, next) => {
     const isAdmin = req.user.role === 'admin';
 
     try {
+        if (await isDemoModeActive()) {
+            const demoResult = cancelDemoAppointment(id, req.user);
+            if (!demoResult.appointment) return res.status(demoResult.status).json({ error: demoResult.error });
+            return res.json({ message: 'Agendamento de demonstração cancelado com sucesso' });
+        }
         const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
         const booking = bookingResult.rows[0];
 
@@ -543,6 +614,11 @@ app.delete('/api/bookings/:id/force', authenticateToken, async (req, res, next) 
     }
 
     try {
+        if (await isDemoModeActive()) {
+            const demoResult = deleteDemoAppointment(id, req.user);
+            if (!demoResult.deleted) return res.status(demoResult.status).json({ error: demoResult.error });
+            return res.json({ message: 'Agendamento de demonstração removido' });
+        }
         const bookingResult = await query("SELECT * FROM appointments WHERE id = $1", [id]);
         const booking = bookingResult.rows[0];
 
