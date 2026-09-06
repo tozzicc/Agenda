@@ -1,85 +1,66 @@
-# React + TypeScript + Vite
+# 📅 Agenda | Appointment Management System
 
-## Configuração do ambiente
+> 🇺🇸 Web application for appointment scheduling and management.  
+> 🇧🇷 Aplicação web para gerenciamento de agendas e agendamentos.
 
-1. Copie `.env.example` para `.env`.
-2. Configure `DATABASE_URL` com a conexão PostgreSQL.
-3. Gere um `JWT_SECRET` forte e exclusivo para o ambiente.
-4. Configure `APP_URL` com a origem do frontend (por exemplo, `http://localhost:5173` no desenvolvimento).
-5. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` e `SMTP_SECURE` para habilitar os e-mails.
-6. Execute `npm run server` para o backend e `npm run dev` para o frontend.
+🌐 **Live Demo | Demonstração:**  
+https://agenda-seven-ruby.vercel.app/
 
-O utilitário opcional `node server/create-default-admin.js` também requer `ADMIN_EMAIL` e `ADMIN_PASSWORD`; `ADMIN_NAME` é opcional.
+---
 
+## 🇺🇸 English
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+### 📌 About the Project
 
-Currently, two official plugins are available:
+**Agenda** is a full-stack web application designed to support appointment scheduling and management through a simple and practical interface.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The project was developed as a real-world application, combining frontend development, backend services, database integration, authentication and production deployment.
 
-## React Compiler
+It represents the evolution from a frontend project into a complete web solution with persistent data and server-side functionality.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### ✨ Main Features
 
-## Expanding the ESLint configuration
+- Appointment scheduling and management
+- User authentication
+- Administrative access
+- Persistent data storage
+- Backend API integration
+- Environment-based configuration
+- Production deployment
+- Responsive web interface
+- Authentication and application security controls
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 🛠️ Technologies
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+**Frontend**
+- React
+- TypeScript
+- Vite
+- HTML
+- CSS
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+**Backend**
+- Node.js
+- REST API
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+**Database**
+- PostgreSQL
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+**Infrastructure & Deployment**
+- Vercel
+- Environment variables
+- Git / GitHub
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 🏗️ Project Structure
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+```text
+Agenda/
+├── api/             # API / serverless endpoints
+├── public/          # Public assets
+├── server/          # Backend services
+├── src/             # React application
+├── .env.example     # Environment configuration example
+├── package.json
+├── tsconfig.json
+├── vercel.json
+└── vite.config.ts
