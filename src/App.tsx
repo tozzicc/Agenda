@@ -4,6 +4,9 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { MyBookings } from './pages/MyBookings';
 import { AdminSettings } from './pages/AdminSettings';
+import { AdminProfessionals } from './pages/AdminProfessionals';
+import { AdminServices } from './pages/AdminServices';
+import { AdminDashboard } from './pages/AdminDashboard';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthProvider } from './context/AuthContext';
@@ -31,6 +34,9 @@ export default function App() {
                 <Route path="/admin/settings" element={
                   <AdminSettings />
                 } />
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                <Route path="/admin/professionals" element={<AdminProfessionals />} />
+                <Route path="/admin/services" element={<AdminServices />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
               </Routes>

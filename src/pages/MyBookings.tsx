@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { CalendarView } from '../components/CalendarView';
 import { TimeSlots } from '../components/TimeSlots';
 import { cn } from '../lib/utils';
+import type { Professional, Service } from '../lib/admin-api';
 
 interface Appointment {
     id: number | string;
@@ -14,6 +15,12 @@ interface Appointment {
     name: string;
     notes: string;
     status: string;
+    service_id: number | null;
+    service_name: string | null;
+    professional_id: number | null;
+    professional_name: string | null;
+    user_name?: string;
+    phone?: string;
 }
 
 export function MyBookings() {
@@ -25,10 +32,22 @@ export function MyBookings() {
     // Edit State
     const [newDate, setNewDate] = useState<Date | undefined>(undefined);
     const [newTime, setNewTime] = useState<string | null>(null);
+    const [services, setServices] = useState<Service[]>([]);
+    const [professionals, setProfessionals] = useState<Professional[]>([]);
+    const [newServiceId, setNewServiceId] = useState<number | null>(null);
+    const [newProfessionalId, setNewProfessionalId] = useState<number | null>(null);
 
     useEffect(() => {
         fetchBookings();
+        fetch('/api/services').then((response) => response.ok ? response.json() : []).then(setServices).catch(() => setServices([]));
     }, [isAuthenticated]);
+
+    const loadProfessionals = async (serviceId: number, selectedId: number | null = null) => {
+        const response = await fetch(`/api/services/${serviceId}/professionals`);
+        const list = response.ok ? await response.json() : [];
+        setProfessionals(list);
+        setNewProfessionalId(selectedId && list.some((item: Professional) => item.id === selectedId) ? selectedId : null);
+    };
 
     const fetchBookings = async () => {
         try {
@@ -93,12 +112,19 @@ export function MyBookings() {
         setEditingBooking(booking);
         setNewDate(parseISO(booking.date));
         setNewTime(booking.time);
+        setNewServiceId(booking.service_id);
+        setNewProfessionalId(booking.professional_id);
+        if (booking.service_id) void loadProfessionals(booking.service_id, booking.professional_id);
+        else setProfessionals([]);
     };
 
     const closeEditModal = () => {
         setEditingBooking(null);
         setNewDate(undefined);
         setNewTime(null);
+        setNewServiceId(null);
+        setNewProfessionalId(null);
+        setProfessionals([]);
     };
 
     const handleUpdate = async () => {
@@ -116,6 +142,7 @@ export function MyBookings() {
                     date: format(newDate, 'yyyy-MM-dd'),
                     time: newTime,
                     notes: editingBooking.notes
+                    , ...(newServiceId && newProfessionalId ? { service_id: newServiceId, professional_id: newProfessionalId } : {})
                 })
             });
 
@@ -175,12 +202,14 @@ export function MyBookings() {
                                         <span>{booking.time} hs</span>
                                         {user?.role === 'admin' && (
                                             <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded text-xs font-medium flex-wrap">
-                                                Cliente: <span className="text-indigo-600">{(booking as any).user_name || booking.name}</span>
+                                                Cliente: <span className="text-indigo-600">{booking.user_name || booking.name}</span>
                                                 <span className="mx-2 text-gray-300">|</span>
-                                                Tel: <span className="text-indigo-600">{(booking as any).phone || 'N/A'}</span>
+                                                Tel: <span className="text-indigo-600">{booking.phone || 'N/A'}</span>
                                             </span>
                                         )}
                                     </div>
+                                    <p className="mt-2 text-sm text-gray-600"><span className="font-medium">Serviço:</span> {booking.service_name || 'Não informado (registro antigo)'}</p>
+                                    <p className="text-sm text-gray-600"><span className="font-medium">Profissional:</span> {booking.professional_name || 'Não informado (registro antigo)'}</p>
                                     {booking.notes && (
                                         <p className="text-gray-500 text-sm mt-2 italic">"{booking.notes}"</p>
                                     )}
@@ -232,6 +261,20 @@ export function MyBookings() {
                         </div>
 
                         <div className="p-6 space-y-6">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="text-sm font-medium text-gray-700">Serviço
+                                    <select value={newServiceId ?? ''} onChange={(event) => { const id = Number(event.target.value); setNewServiceId(id || null); setNewProfessionalId(null); if (id) void loadProfessionals(id); }} className="mt-2 w-full rounded-lg border border-gray-200 p-2.5 font-normal">
+                                        <option value="">Registro antigo / não informado</option>
+                                        {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
+                                    </select>
+                                </label>
+                                <label className="text-sm font-medium text-gray-700">Profissional
+                                    <select value={newProfessionalId ?? ''} onChange={(event) => setNewProfessionalId(Number(event.target.value) || null)} disabled={!newServiceId} className="mt-2 w-full rounded-lg border border-gray-200 p-2.5 font-normal disabled:bg-gray-100">
+                                        <option value="">Selecione</option>
+                                        {professionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
+                                    </select>
+                                </label>
+                            </div>
                             <div>
                                 <h3 className="text-sm font-medium text-gray-700 mb-3">Nova Data</h3>
                                 <CalendarView
@@ -249,6 +292,9 @@ export function MyBookings() {
                                     <TimeSlots
                                         selectedDate={newDate}
                                         selectedTime={newTime}
+                                        serviceId={newServiceId}
+                                        professionalId={newProfessionalId}
+                                        ignoredAppointmentId={editingBooking.id}
                                         onSelectTime={setNewTime}
                                     />
                                 </div>
@@ -263,7 +309,7 @@ export function MyBookings() {
                                 </button>
                                 <button
                                     onClick={handleUpdate}
-                                    disabled={!newDate || !newTime}
+                                    disabled={!newDate || !newTime || Boolean(newServiceId) !== Boolean(newProfessionalId)}
                                     className="flex-1 py-2.5 bg-indigo-600 rounded-lg text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 >
                                     Confirmar Alteração

@@ -8,6 +8,10 @@ import { LogIn } from 'lucide-react';
 interface BookingFormProps {
     selectedDate: Date;
     selectedTime: string;
+    serviceId: number;
+    professionalId: number;
+    serviceName: string;
+    professionalName: string;
     onSubmit: (data: BookingData) => void;
     onBack: () => void;
 }
@@ -19,7 +23,7 @@ export interface BookingData {
     notes?: string;
 }
 
-export function BookingForm({ selectedDate, selectedTime, onSubmit, onBack }: BookingFormProps) {
+export function BookingForm({ selectedDate, selectedTime, serviceId, professionalId, serviceName, professionalName, onSubmit, onBack }: BookingFormProps) {
     const { isAuthenticated } = useAuth();
     const navigate = useNavigate();
 
@@ -48,6 +52,8 @@ export function BookingForm({ selectedDate, selectedTime, onSubmit, onBack }: Bo
                 body: JSON.stringify({
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     time: selectedTime,
+                    service_id: serviceId,
+                    professional_id: professionalId,
                     ...formData
                 })
             });
@@ -71,6 +77,7 @@ export function BookingForm({ selectedDate, selectedTime, onSubmit, onBack }: Bo
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 animate-in slide-in-from-right-8 duration-500">
+            <p className="text-sm text-gray-600"><span className="font-semibold">{serviceName}</span> com <span className="font-semibold">{professionalName}</span></p>
             <div className="bg-indigo-50 p-4 rounded-lg mb-6 text-sm text-indigo-900 border border-indigo-100">
                 Você está agendando para <span className="font-semibold capitalize">{format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}</span> às <span className="font-semibold">{selectedTime}</span>
             </div>

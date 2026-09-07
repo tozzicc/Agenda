@@ -10,9 +10,11 @@ import multer from 'multer';
 import 'dotenv/config';
 import { databaseReady, query } from './db.js';
 import { sendPasswordResetEmail, sendBookingConfirmationEmail } from './mailer.js';
-import { validateScheduleAvailability } from './availability.js';
+import { hasAppointmentConflict, listAvailableTimes, validateScheduleAvailability } from './availability-v2.js';
 import { requireEnvironmentVariables } from './environment.js';
-import { cancelDemoAppointment, createDemoAppointment, deleteDemoAppointment, getDemoBookedTimes, getDemoSettings, isDemoModeValue, listDemoAppointments, resetDemoAppointments, updateDemoAppointment } from './demo-mode.js';
+import { cancelDemoAppointment, createDemoAppointment, deleteDemoAppointment, getDemoBookedTimes, getDemoSettings, isDemoModeValue, listDemoAppointments, listDemoAvailableTimes, listDemoProfessionals, listDemoServices, resetDemoAppointments, updateDemoAppointment } from './demo-mode.js';
+import { parsePositiveId, validateActiveStatus, validateProfessional, validateService } from './catalog-validation.js';
+import { aggregateDashboard, dashboardToday, resolveDashboardPeriod } from './dashboard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +86,34 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+const requireAdmin = (req, res, next) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso restrito a administradores' });
+    next();
+};
+
+async function ensureOperationalMode(res) {
+    if (await isDemoModeActive()) {
+        res.status(409).json({ error: 'Desative o modo demonstração para alterar cadastros operacionais' });
+        return false;
+    }
+    return true;
+}
+
+async function validateCatalogSelection(serviceIdValue, professionalIdValue) {
+    const serviceId = parsePositiveId(serviceIdValue);
+    const professionalId = parsePositiveId(professionalIdValue);
+    if (!serviceId || !professionalId) return { error: 'Servico e profissional sao obrigatorios' };
+    if (await isDemoModeActive()) {
+        const service = listDemoServices().find(({ id }) => id === serviceId);
+        const professional = listDemoProfessionals(serviceId).find(({ id }) => id === professionalId);
+        return service && professional ? { serviceId, professionalId, durationMinutes: service.duration_minutes } : { error: 'Servico ou profissional indisponivel' };
+    }
+    const result = await query(`SELECT s.duration_minutes FROM professional_services ps
+        JOIN services s ON s.id = ps.service_id AND s.active = TRUE
+        JOIN professionals p ON p.id = ps.professional_id AND p.active = TRUE
+        WHERE ps.service_id = $1 AND ps.professional_id = $2`, [serviceId, professionalId]);
+    return result.rows.length ? { serviceId, professionalId, durationMinutes: result.rows[0].duration_minutes } : { error: 'Servico ou profissional indisponivel' };
+}
 // --- Auth Routes ---
 
 app.post('/api/auth/register', registerRateLimiter, async (req, res, next) => {
@@ -269,6 +299,172 @@ app.post('/api/auth/reset-password', resetPasswordRateLimiter, async (req, res, 
 
 // --- Schedule Settings Routes ---
 
+app.get('/api/admin/dashboard', authenticateToken, requireAdmin, async (req, res, next) => {
+    const period = resolveDashboardPeriod(req.query);
+    if (period.error) return res.status(400).json({ error: period.error });
+    try {
+        if (await isDemoModeActive()) {
+            const appointments = listDemoAppointments({ role: 'admin' });
+            const today = dashboardToday();
+            return res.json(aggregateDashboard(appointments, period, {
+                today: appointments.filter((item) => item.date === today).length,
+                activeProfessionals: listDemoProfessionals().filter((item) => item.active).length,
+                activeServices: listDemoServices().filter((item) => item.active).length,
+            }));
+        }
+        const today = dashboardToday();
+        const [appointments, todayCount, professionalCount, serviceCount] = await Promise.all([
+            query(`SELECT a.date, a.time, a.status, a.name, a.user_id, u.name AS user_name,
+                p.name AS professional_name, s.name AS service_name
+                FROM appointments a
+                LEFT JOIN users u ON u.id = a.user_id
+                LEFT JOIN professionals p ON p.id = a.professional_id
+                LEFT JOIN services s ON s.id = a.service_id
+                WHERE a.date BETWEEN $1 AND $2`, [period.start, period.end]),
+            query('SELECT COUNT(*)::integer AS count FROM appointments WHERE date = $1', [today]),
+            query('SELECT COUNT(*)::integer AS count FROM professionals WHERE active = TRUE'),
+            query('SELECT COUNT(*)::integer AS count FROM services WHERE active = TRUE'),
+        ]);
+        res.json(aggregateDashboard(appointments.rows, period, {
+            today: todayCount.rows[0]?.count,
+            activeProfessionals: professionalCount.rows[0]?.count,
+            activeServices: serviceCount.rows[0]?.count,
+        }));
+    } catch (error) { next(error); }
+});
+
+// --- Administrative catalog routes (ET-07) ---
+app.get('/api/admin/professionals', authenticateToken, requireAdmin, async (req, res, next) => {
+    try {
+        const result = await query('SELECT id, name, specialty, active, created_at, updated_at FROM professionals ORDER BY name, id');
+        res.json(result.rows);
+    } catch (error) { next(error); }
+});
+
+app.post('/api/admin/professionals', authenticateToken, requireAdmin, async (req, res, next) => {
+    const validation = validateProfessional(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const { name, specialty, active } = validation.value;
+        const result = await query('INSERT INTO professionals (name, specialty, active) VALUES ($1, $2, $3) RETURNING *', [name, specialty, active]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.put('/api/admin/professionals/:id', authenticateToken, requireAdmin, async (req, res, next) => {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID de profissional inválido' });
+    const validation = validateProfessional(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const { name, specialty, active } = validation.value;
+        const result = await query('UPDATE professionals SET name = $1, specialty = $2, active = $3, updated_at = NOW() WHERE id = $4 RETURNING *', [name, specialty, active, id]);
+        if (!result.rows[0]) return res.status(404).json({ error: 'Profissional não encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/professionals/:id/status', authenticateToken, requireAdmin, async (req, res, next) => {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID de profissional inválido' });
+    const validation = validateActiveStatus(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const result = await query('UPDATE professionals SET active = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [validation.value, id]);
+        if (!result.rows[0]) return res.status(404).json({ error: 'Profissional não encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.get('/api/admin/services', authenticateToken, requireAdmin, async (req, res, next) => {
+    try {
+        const result = await query('SELECT id, name, description, duration_minutes, active, created_at, updated_at FROM services ORDER BY name, id');
+        res.json(result.rows);
+    } catch (error) { next(error); }
+});
+
+app.post('/api/admin/services', authenticateToken, requireAdmin, async (req, res, next) => {
+    const validation = validateService(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const { name, description, durationMinutes, active } = validation.value;
+        const result = await query('INSERT INTO services (name, description, duration_minutes, active) VALUES ($1, $2, $3, $4) RETURNING *', [name, description, durationMinutes, active]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.put('/api/admin/services/:id', authenticateToken, requireAdmin, async (req, res, next) => {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID de serviço inválido' });
+    const validation = validateService(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const { name, description, durationMinutes, active } = validation.value;
+        const result = await query('UPDATE services SET name = $1, description = $2, duration_minutes = $3, active = $4, updated_at = NOW() WHERE id = $5 RETURNING *', [name, description, durationMinutes, active, id]);
+        if (!result.rows[0]) return res.status(404).json({ error: 'Serviço não encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/services/:id/status', authenticateToken, requireAdmin, async (req, res, next) => {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID de serviço inválido' });
+    const validation = validateActiveStatus(req.body);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const result = await query('UPDATE services SET active = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [validation.value, id]);
+        if (!result.rows[0]) return res.status(404).json({ error: 'Serviço não encontrado' });
+        res.json(result.rows[0]);
+    } catch (error) { next(error); }
+});
+
+app.get('/api/admin/professionals/:id/services', authenticateToken, requireAdmin, async (req, res, next) => {
+    const id = parsePositiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID de profissional inválido' });
+    try {
+        const professional = await query('SELECT id FROM professionals WHERE id = $1', [id]);
+        if (!professional.rows[0]) return res.status(404).json({ error: 'Profissional não encontrado' });
+        const result = await query('SELECT s.id, s.name, s.description, s.duration_minutes, s.active FROM professional_services ps JOIN services s ON s.id = ps.service_id WHERE ps.professional_id = $1 ORDER BY s.name, s.id', [id]);
+        res.json(result.rows);
+    } catch (error) { next(error); }
+});
+
+app.post('/api/admin/professionals/:professionalId/services/:serviceId', authenticateToken, requireAdmin, async (req, res, next) => {
+    const professionalId = parsePositiveId(req.params.professionalId);
+    const serviceId = parsePositiveId(req.params.serviceId);
+    if (!professionalId || !serviceId) return res.status(400).json({ error: 'IDs de profissional e serviço devem ser válidos' });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const [professional, service] = await Promise.all([
+            query('SELECT id FROM professionals WHERE id = $1', [professionalId]),
+            query('SELECT id FROM services WHERE id = $1', [serviceId]),
+        ]);
+        if (!professional.rows[0]) return res.status(404).json({ error: 'Profissional não encontrado' });
+        if (!service.rows[0]) return res.status(404).json({ error: 'Serviço não encontrado' });
+        await query('INSERT INTO professional_services (professional_id, service_id) VALUES ($1, $2)', [professionalId, serviceId]);
+        res.status(201).json({ professionalId, serviceId });
+    } catch (error) {
+        if (error.code === '23505') return res.status(409).json({ error: 'Serviço já vinculado a este profissional' });
+        next(error);
+    }
+});
+app.delete('/api/admin/professionals/:professionalId/services/:serviceId', authenticateToken, requireAdmin, async (req, res, next) => {
+    const professionalId = parsePositiveId(req.params.professionalId);
+    const serviceId = parsePositiveId(req.params.serviceId);
+    if (!professionalId || !serviceId) return res.status(400).json({ error: 'IDs de profissional e serviço devem ser válidos' });
+    try {
+        if (!await ensureOperationalMode(res)) return;
+        const result = await query('DELETE FROM professional_services WHERE professional_id = $1 AND service_id = $2', [professionalId, serviceId]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Associação não encontrada' });
+        res.json({ message: 'Associação removida com sucesso' });
+    } catch (error) { next(error); }
+});
 // Get schedule settings (public)
 app.get('/api/settings/schedule', async (req, res, next) => {
     try {
@@ -438,6 +634,57 @@ app.post('/api/settings/logo', authenticateToken, upload.single('logo'), async (
 
 // --- Booking Routes ---
 
+// Public catalog used by the booking flow. Only active and associated records are exposed.
+app.get('/api/services', async (req, res, next) => {
+    try {
+        if (await isDemoModeActive()) return res.json(listDemoServices());
+        const result = await query(`SELECT DISTINCT s.id, s.name, s.description, s.duration_minutes
+            FROM services s JOIN professional_services ps ON ps.service_id = s.id
+            JOIN professionals p ON p.id = ps.professional_id
+            WHERE s.active = TRUE AND p.active = TRUE ORDER BY s.name, s.id`);
+        res.json(result.rows);
+    } catch (err) { next(err); }
+});
+
+app.get('/api/professionals', async (req, res, next) => {
+    const serviceId = parsePositiveId(req.query.service_id);
+    if (!serviceId) return res.status(400).json({ error: 'Servico invalido' });
+    try {
+        if (await isDemoModeActive()) return res.json(listDemoProfessionals(serviceId));
+        const result = await query(`SELECT p.id, p.name, p.specialty
+            FROM professionals p JOIN professional_services ps ON ps.professional_id = p.id
+            JOIN services s ON s.id = ps.service_id
+            WHERE ps.service_id = $1 AND p.active = TRUE AND s.active = TRUE ORDER BY p.name, p.id`, [serviceId]);
+        res.json(result.rows);
+    } catch (err) { next(err); }
+});
+
+app.get('/api/services/:serviceId/professionals', async (req, res, next) => {
+    const serviceId = parsePositiveId(req.params.serviceId);
+    if (!serviceId) return res.status(400).json({ error: 'Servico invalido' });
+    try {
+        if (await isDemoModeActive()) return res.json(listDemoProfessionals(serviceId));
+        const result = await query(`SELECT p.id, p.name, p.specialty
+            FROM professionals p JOIN professional_services ps ON ps.professional_id = p.id
+            JOIN services s ON s.id = ps.service_id
+            WHERE ps.service_id = $1 AND p.active = TRUE AND s.active = TRUE ORDER BY p.name, p.id`, [serviceId]);
+        res.json(result.rows);
+    } catch (err) { next(err); }
+});
+
+app.get('/api/availability', async (req, res, next) => {
+    const { date } = req.query;
+    try {
+        const catalog = await validateCatalogSelection(req.query.service_id, req.query.professional_id);
+        if (!date || catalog.error) return res.status(400).json({ error: catalog.error || 'Data obrigatoria' });
+        const demoMode = await isDemoModeActive();
+        const ignoredId = req.query.ignore_appointment_id === undefined ? null : parsePositiveId(req.query.ignore_appointment_id);
+        if (!demoMode && req.query.ignore_appointment_id !== undefined && !ignoredId) return res.status(400).json({ error: 'Agendamento ignorado invalido' });
+        if (demoMode) return res.json(listDemoAvailableTimes(date, catalog.durationMinutes, catalog.professionalId, req.query.ignore_appointment_id || null));
+        res.json(await listAvailableTimes({ date, durationMinutes: catalog.durationMinutes, professionalId: catalog.professionalId, ignoredId }));
+    } catch (err) { next(err); }
+});
+
 // Get booked slots for a specific date
 app.get('/api/bookings', async (req, res, next) => {
     const { date } = req.query;
@@ -464,11 +711,11 @@ app.get('/api/my-bookings', authenticateToken, async (req, res, next) => {
         let result;
         if (isAdmin) {
             result = await query(
-                "SELECT a.*, u.name as user_name FROM appointments a JOIN users u ON a.user_id = u.id ORDER BY a.date DESC, a.time DESC"
+                "SELECT a.*, u.name as user_name, s.name as service_name, p.name as professional_name FROM appointments a JOIN users u ON a.user_id = u.id LEFT JOIN services s ON s.id = a.service_id LEFT JOIN professionals p ON p.id = a.professional_id ORDER BY a.date DESC, a.time DESC"
             );
         } else {
             result = await query(
-                "SELECT * FROM appointments WHERE user_id = $1 ORDER BY date DESC, time DESC",
+                "SELECT a.*, s.name as service_name, p.name as professional_name FROM appointments a LEFT JOIN services s ON s.id = a.service_id LEFT JOIN professionals p ON p.id = a.professional_id WHERE a.user_id = $1 ORDER BY a.date DESC, a.time DESC",
                 [req.user.id]
             );
         }
@@ -480,7 +727,7 @@ app.get('/api/my-bookings', authenticateToken, async (req, res, next) => {
 
 // Create new booking
 app.post('/api/bookings', authenticateToken, async (req, res, next) => {
-    const { date, time, name, phone, notes } = req.body;
+    const { date, time, name, phone, notes, service_id, professional_id } = req.body;
     const userId = req.user.id;
 
     if (!date || !time || !name || !phone) {
@@ -488,28 +735,26 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
     }
 
     try {
+        const catalog = await validateCatalogSelection(service_id, professional_id);
+        if (catalog.error) return res.status(400).json({ error: catalog.error });
         if (await isDemoModeActive()) {
-            const demoResult = createDemoAppointment(req.user, { date, time, name, phone, notes, email: req.user.email });
+            const demoResult = createDemoAppointment(req.user, { date, time, name, phone, notes, service_id: catalog.serviceId, professional_id: catalog.professionalId, email: req.user.email });
             if (!demoResult.valid) return res.status(demoResult.status).json({ error: demoResult.error });
             return res.status(201).json({ id: demoResult.appointment.id, message: 'Agendamento de demonstração realizado com sucesso' });
         }
-        const availability = await validateScheduleAvailability(date, time);
+        const availability = await validateScheduleAvailability(date, time, catalog.durationMinutes);
         if (!availability.valid) {
             return res.status(availability.status).json({ error: availability.error });
         }
 
-        // Check for double booking
-        const existing = await query(
-            "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active'",
-            [date, time]
-        );
-        if (existing.rows.length > 0) {
+        // The trigger is the final concurrency guard; this check gives an early response.
+        if (await hasAppointmentConflict({ date, time, durationMinutes: catalog.durationMinutes, professionalId: catalog.professionalId })) {
             return res.status(409).json({ error: 'Este horário já foi reservado' });
         }
 
         const result = await query(
-            'INSERT INTO appointments (user_id, date, time, name, phone, notes, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-            [userId, date, time, name, phone, notes, 'active']
+            'INSERT INTO appointments (user_id, date, time, name, phone, notes, status, service_id, professional_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+            [userId, date, time, name, phone, notes, 'active', catalog.serviceId, catalog.professionalId]
         );
 
         // Send confirmation email asychronously
@@ -518,7 +763,7 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
 
         res.status(201).json({ id: result.rows[0].id, message: 'Agendamento realizado com sucesso' });
     } catch (err) {
-        if (err.code === '23505' && err.constraint === 'appointments_active_date_time_unique') {
+        if (err.code === '23P01' && err.constraint === 'appointments_no_active_overlap') {
             return res.status(409).json({ error: 'Este horário já foi reservado' });
         }
         next(err);
@@ -528,13 +773,19 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
 // Update booking
 app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
     const { id } = req.params;
-    const { date, time, notes } = req.body;
+    const { date, time, notes, service_id, professional_id } = req.body;
     const userId = req.user.id;
     const isAdmin = req.user.role === 'admin';
 
     try {
-        if (await isDemoModeActive()) {
-            const demoResult = updateDemoAppointment(id, req.user, { date, time, notes });
+        const demoMode = await isDemoModeActive();
+        if (demoMode) {
+            let catalog = {};
+            if (service_id !== undefined || professional_id !== undefined) {
+                catalog = await validateCatalogSelection(service_id, professional_id);
+                if (catalog.error) return res.status(400).json({ error: catalog.error });
+            }
+            const demoResult = updateDemoAppointment(id, req.user, { date, time, notes, service_id: catalog.serviceId, professional_id: catalog.professionalId });
             if (!demoResult.appointment) return res.status(demoResult.status).json({ error: demoResult.error });
             return res.json({ message: 'Agendamento de demonstração atualizado com sucesso' });
         }
@@ -548,27 +799,39 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
             return res.status(403).json({ error: 'Não autorizado' });
         }
 
-        const availability = await validateScheduleAvailability(date, time);
+        let selectedServiceId = booking.service_id;
+        let selectedProfessionalId = booking.professional_id;
+        let durationMinutes = null;
+        if (service_id !== undefined || professional_id !== undefined) {
+            const catalog = await validateCatalogSelection(service_id, professional_id);
+            if (catalog.error) return res.status(400).json({ error: catalog.error });
+            selectedServiceId = catalog.serviceId;
+            selectedProfessionalId = catalog.professionalId;
+            durationMinutes = catalog.durationMinutes;
+        } else if (selectedServiceId && selectedProfessionalId) {
+            const service = await query('SELECT duration_minutes FROM services WHERE id = $1', [selectedServiceId]);
+            durationMinutes = service.rows[0]?.duration_minutes;
+        }
+
+        const availability = await validateScheduleAvailability(date, time, durationMinutes || 1);
         if (!availability.valid) {
             return res.status(availability.status).json({ error: availability.error });
         }
 
-        // Check availability if date/time changed
-        const conflict = await query(
-            "SELECT * FROM appointments WHERE date = $1 AND time = $2 AND status = 'active' AND id != $3",
-            [date, time, id]
-        );
-        if (conflict.rows.length > 0) {
+        const conflict = durationMinutes
+            ? await hasAppointmentConflict({ date, time, durationMinutes, professionalId: selectedProfessionalId, ignoredId: Number(id) })
+            : (await query("SELECT 1 FROM appointments WHERE date = $1 AND time = $2 AND status = 'active' AND id != $3 LIMIT 1", [date, time, id])).rows.length > 0;
+        if (conflict) {
             return res.status(409).json({ error: 'Este horário já está ocupado' });
         }
 
         await query(
-            'UPDATE appointments SET date = $1, time = $2, notes = $3 WHERE id = $4',
-            [date, time, notes, id]
+            'UPDATE appointments SET date = $1, time = $2, notes = $3, service_id = $4, professional_id = $5 WHERE id = $6',
+            [date, time, notes, selectedServiceId, selectedProfessionalId, id]
         );
         res.json({ message: 'Agendamento atualizado com sucesso' });
     } catch (err) {
-        if (err.code === '23505' && err.constraint === 'appointments_active_date_time_unique') {
+        if (err.code === '23P01' && err.constraint === 'appointments_no_active_overlap') {
             return res.status(409).json({ error: 'Este horário já está ocupado' });
         }
         next(err);

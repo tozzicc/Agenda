@@ -7,6 +7,26 @@ export const DEMO_CLIENTS = [
     { key: 'demo-client-4', name: 'Rafael Martins', email: 'rafael@demo.local', phone: '00000000004' },
 ];
 
+export const DEMO_SERVICES = [
+    { id: 1, name: 'Avaliacao', description: 'Primeiro atendimento', duration_minutes: 60, active: true },
+    { id: 2, name: 'Consulta', description: 'Atendimento de acompanhamento', duration_minutes: 60, active: true },
+];
+
+export const DEMO_PROFESSIONALS = [
+    { id: 1, name: 'Dra. Ana Demo', specialty: 'Bem-estar', active: true, service_ids: [1, 2] },
+    { id: 2, name: 'Dr. Bruno Demo', specialty: 'Atendimento clinico', active: true, service_ids: [2] },
+];
+
+export function listDemoServices() {
+    return DEMO_SERVICES.map((service) => ({ ...service }));
+}
+
+export function listDemoProfessionals(serviceId) {
+    return DEMO_PROFESSIONALS
+        .filter((professional) => !serviceId || professional.service_ids.includes(Number(serviceId)))
+        .map(({ service_ids, ...professional }) => ({ ...professional }));
+}
+
 const DEMO_SETTINGS = {
     start: '09:00',
     end: '18:00',
@@ -56,6 +76,9 @@ function createInitialAppointments(now = new Date()) {
 
     return entries.map(([clientIndex, offset, time, status, notes], index) => {
         const client = DEMO_CLIENTS[clientIndex];
+        const service = DEMO_SERVICES[index % DEMO_SERVICES.length];
+        const compatibleProfessionals = DEMO_PROFESSIONALS.filter((item) => item.service_ids.includes(service.id));
+        const professional = compatibleProfessionals[index % compatibleProfessionals.length];
         return {
             id: `demo-${index + 1}`,
             user_id: client.key,
@@ -67,6 +90,10 @@ function createInitialAppointments(now = new Date()) {
             time,
             notes,
             status,
+            service_id: service.id,
+            service_name: service.name,
+            professional_id: professional.id,
+            professional_name: professional.name,
         };
     });
 }
@@ -101,7 +128,9 @@ export function getDemoBookedTimes(date) {
         .map(({ time }) => time);
 }
 
-export function validateDemoAvailability(date, time, ignoredId) {
+const demoTimeToMinutes = (value) => value.split(':').map(Number).reduce((hours, minutes) => hours * 60 + minutes);
+
+export function validateDemoAvailability(date, time, durationMinutes, professionalId, ignoredId) {
     const parsed = new Date(`${date}T12:00:00Z`);
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
         return { valid: false, status: 400, error: 'Data inválida' };
@@ -110,17 +139,32 @@ export function validateDemoAvailability(date, time, ignoredId) {
     if (date < today) return { valid: false, status: 400, error: 'Não é possível agendar em data passada' };
     const day = parsed.getUTCDay();
     if (day === 0 || day === 6) return { valid: false, status: 400, error: 'Agendamento não permitido aos finais de semana' };
-    const allowedTimes = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-    if (!allowedTimes.includes(time)) return { valid: false, status: 400, error: 'Horário fora do funcionamento' };
+    const start = demoTimeToMinutes(time);
+    const end = start + Number(durationMinutes);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time) || start < 540 || end > 1080 || start % 60 !== 0) return { valid: false, status: 400, error: 'Horário fora do funcionamento' };
+    if (start < 780 && end > 720) return { valid: false, status: 400, error: 'Horário indisponível' };
     const conflict = demoAppointments.some((appointment) =>
-        appointment.id !== ignoredId && appointment.date === date && appointment.time === time && appointment.status === 'active'
+        appointment.id !== ignoredId && appointment.date === date && appointment.status === 'active'
+        && appointment.professional_id === Number(professionalId)
+        && start < demoTimeToMinutes(appointment.time) + (DEMO_SERVICES.find(({ id }) => id === appointment.service_id)?.duration_minutes || 1)
+        && end > demoTimeToMinutes(appointment.time)
     );
     if (conflict) return { valid: false, status: 409, error: 'Este horário já está ocupado' };
     return { valid: true };
 }
 
+export function listDemoAvailableTimes(date, durationMinutes, professionalId, ignoredId = null) {
+    const times = [];
+    for (let minute = 540; minute < 1080; minute += 60) {
+        const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:00`;
+        if (validateDemoAvailability(date, time, durationMinutes, professionalId, ignoredId).valid) times.push(time);
+    }
+    return times;
+}
+
 export function createDemoAppointment(user, details) {
-    const availability = validateDemoAvailability(details.date, details.time);
+    const service = DEMO_SERVICES.find(({ id }) => id === Number(details.service_id));
+    const availability = validateDemoAvailability(details.date, details.time, service?.duration_minutes, details.professional_id);
     if (!availability.valid) return availability;
     const ownerKey = ownerKeyForUser(user);
     const client = DEMO_CLIENTS.find(({ key }) => key === ownerKey);
@@ -135,6 +179,10 @@ export function createDemoAppointment(user, details) {
         time: details.time,
         notes: details.notes || '',
         status: 'active',
+        service_id: Number(details.service_id),
+        service_name: DEMO_SERVICES.find(({ id }) => id === Number(details.service_id))?.name,
+        professional_id: Number(details.professional_id),
+        professional_name: DEMO_PROFESSIONALS.find(({ id }) => id === Number(details.professional_id))?.name,
     };
     demoAppointments.push(appointment);
     return { valid: true, appointment: { ...appointment } };
@@ -153,11 +201,22 @@ function findAuthorizedAppointment(id, user) {
 export function updateDemoAppointment(id, user, details) {
     const found = findAuthorizedAppointment(id, user);
     if (!found.appointment) return found;
-    const availability = validateDemoAvailability(details.date, details.time, id);
+    const serviceId = details.service_id ?? found.appointment.service_id;
+    const professionalId = details.professional_id ?? found.appointment.professional_id;
+    const service = DEMO_SERVICES.find(({ id: serviceIdValue }) => serviceIdValue === Number(serviceId));
+    const availability = validateDemoAvailability(details.date, details.time, service?.duration_minutes, professionalId, id);
     if (!availability.valid) return availability;
     found.appointment.date = details.date;
     found.appointment.time = details.time;
     found.appointment.notes = details.notes || '';
+    if (details.service_id !== undefined) {
+        found.appointment.service_id = Number(details.service_id);
+        found.appointment.service_name = DEMO_SERVICES.find(({ id }) => id === Number(details.service_id))?.name;
+    }
+    if (details.professional_id !== undefined) {
+        found.appointment.professional_id = Number(details.professional_id);
+        found.appointment.professional_name = DEMO_PROFESSIONALS.find(({ id }) => id === Number(details.professional_id))?.name;
+    }
     return { appointment: { ...found.appointment } };
 }
 

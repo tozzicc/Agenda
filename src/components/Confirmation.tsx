@@ -7,10 +7,12 @@ interface ConfirmationProps {
     selectedDate: Date;
     selectedTime: string;
     bookingData: BookingData;
+    serviceName: string;
+    professionalName: string;
     onReset: () => void;
 }
 
-export function Confirmation({ selectedDate, selectedTime, bookingData, onReset }: ConfirmationProps) {
+export function Confirmation({ selectedDate, selectedTime, bookingData, serviceName, professionalName, onReset }: ConfirmationProps) {
     return (
         <div className="text-center animate-in zoom-in-95 duration-500">
             <div className="flex justify-center mb-6">
@@ -34,6 +36,8 @@ export function Confirmation({ selectedDate, selectedTime, bookingData, onReset 
                     </div>
                 </div>
                 <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-4"><span className="text-gray-500">Servico</span><span className="font-medium text-gray-900 text-right">{serviceName}</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-gray-500">Profissional</span><span className="font-medium text-gray-900 text-right">{professionalName}</span></div>
                     <div className="flex justify-between">
                         <span className="text-gray-500">Nome</span>
                         <span className="font-medium text-gray-900">{bookingData.name}</span>

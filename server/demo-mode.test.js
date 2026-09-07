@@ -7,6 +7,7 @@ import {
     createDemoAppointment,
     getDemoBookedTimes,
     getDemoSettings,
+    listDemoAvailableTimes,
     listDemoAppointments,
     resetDemoAppointments,
     updateDemoAppointment,
@@ -45,7 +46,7 @@ test('initial dataset has relative, varied and isolated appointments', () => {
 
 test('create, update, cancel and reset operate only on memory records', () => {
     const date = futureWeekday();
-    const created = createDemoAppointment(user, { date, time: '09:00', name: 'Visitante Demo', phone: '000', notes: 'Teste' });
+    const created = createDemoAppointment(user, { date, time: '09:00', name: 'Visitante Demo', phone: '000', notes: 'Teste', service_id: 1, professional_id: 1 });
     assert.equal(created.valid, true);
     assert.match(created.appointment.id, /^demo-/);
     assert.deepEqual(getDemoBookedTimes(date), ['09:00']);
@@ -58,4 +59,13 @@ test('create, update, cancel and reset operate only on memory records', () => {
     assert.equal(updateDemoAppointment('42', user, { date, time: '11:00' }).status, 404);
     assert.equal(resetDemoAppointments(new Date('2030-06-10T12:00:00Z')), 14);
     assert.equal(listDemoAppointments(admin).length, 14);
+});
+
+test('demo availability uses duration and isolates professionals', () => {
+    const date = futureWeekday();
+    assert.equal(createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 1 }).valid, true);
+    assert.equal(createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 1 }).status, 409);
+    assert.equal(createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 2 }).valid, true);
+    assert.ok(!listDemoAvailableTimes(date, 60, 1).includes('09:00'));
+    assert.ok(!listDemoAvailableTimes(date, 120, 2).includes('11:00'));
 });

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, UserCircle, LogOut, Settings } from 'lucide-react';
+import { BarChart3, BriefcaseBusiness, Calendar, LogOut, Settings, Stethoscope, UserCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 
@@ -7,66 +7,32 @@ export function Navbar() {
     const { user, logout } = useAuth();
     const { settings } = useSettings();
     const navigate = useNavigate();
-
-    const handleLogout = () => {
-        logout();
-        navigate('/');
-    };
+    const handleLogout = () => { logout(); navigate('/'); };
 
     return (
-        <header className="w-full border-b border-gray-100 bg-white sticky top-0 z-50">
-            <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between">
-                <Link to="/" className="flex items-center gap-2 text-indigo-600 font-semibold text-lg hover:opacity-80 transition-opacity">
-                    {settings.appLogo ? (
-                        <img src={settings.appLogo} alt="Logo" className="w-8 h-8 object-contain" />
-                    ) : (
-                        <Calendar className="w-6 h-6" />
-                    )}
-                    <span>{settings.companyName}</span>
-                    {settings.demoMode && user?.role === 'admin' && (
-                        <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                            Modo Demonstração
-                        </span>
-                    )}
+        <header className="sticky top-0 z-50 w-full border-b border-gray-100 bg-white">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-8">
+                <Link to="/" className="flex min-w-0 items-center gap-2 text-lg font-semibold text-indigo-600 transition-opacity hover:opacity-80">
+                    {settings.appLogo ? <img src={settings.appLogo} alt="Logo" className="h-8 w-8 object-contain" /> : <Calendar className="h-6 w-6 shrink-0" />}
+                    <span className="truncate">{settings.companyName}</span>
+                    {settings.demoMode && user?.role === 'admin' && <span className="hidden rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 sm:inline">Modo Demonstração</span>}
                 </Link>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1 sm:gap-2">
                     {user ? (
-                        <div className="flex items-center gap-4">
-                            {user.role === 'admin' && (
+                        <>
+                            {user.role === 'admin' ? (
                                 <>
-                                    <Link to="/my-bookings" className="flex items-center gap-2 text-sm font-bold text-amber-700 hover:text-amber-900 transition-colors bg-amber-100 hover:bg-amber-200 px-4 py-2 rounded-lg border border-amber-200">
-                                        <UserCircle className="w-4 h-4" />
-                                        <span>Painel Admin</span>
-                                    </Link>
-                                    <Link to="/admin/settings" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-indigo-600 transition-colors bg-gray-100 hover:bg-indigo-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-indigo-200">
-                                        <Settings className="w-4 h-4" />
-                                        <span>Configurações</span>
-                                    </Link>
+                                    <Link to="/admin/dashboard" title="Dashboard" className="rounded-lg p-2 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"><BarChart3 className="h-5 w-5" /></Link>
+                                    <Link to="/my-bookings" title="Agenda" className="rounded-lg p-2 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"><UserCircle className="h-5 w-5" /></Link>
+                                    <Link to="/admin/professionals" title="Profissionais" className="rounded-lg p-2 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"><Stethoscope className="h-5 w-5" /></Link>
+                                    <Link to="/admin/services" title="Serviços" className="rounded-lg p-2 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"><BriefcaseBusiness className="h-5 w-5" /></Link>
+                                    <Link to="/admin/settings" title="Configurações" className="rounded-lg p-2 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600"><Settings className="h-5 w-5" /></Link>
                                 </>
-                            )}
-                            <Link to="/my-bookings" className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 hidden sm:block">
-                                {user.role === 'admin' ? 'Todos os Agendamentos' : 'Meus Agendamentos'}
-                            </Link>
-                            <span className="text-sm font-medium text-gray-700">
-                                Olá, <span className="text-indigo-600 capitalize">{user.name}</span>
-                            </span>
-                            <button
-                                onClick={handleLogout}
-                                className="p-2 text-gray-500 hover:text-red-500 transition-colors rounded-full hover:bg-gray-50"
-                                title="Sair"
-                            >
-                                <LogOut className="w-5 h-5" />
-                            </button>
-                        </div>
-                    ) : (
-                        <Link
-                            to="/login"
-                            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors px-4 py-2 rounded-lg hover:bg-gray-50 bg-transparent border border-transparent hover:border-gray-200"
-                        >
-                            <UserCircle className="w-5 h-5" />
-                            <span>Entrar</span>
-                        </Link>
-                    )}
+                            ) : <Link to="/my-bookings" className="hidden rounded-full bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-100 sm:block">Meus Agendamentos</Link>}
+                            <span className="hidden text-sm font-medium text-gray-700 lg:block">Olá, <span className="capitalize text-indigo-600">{user.name}</span></span>
+                            <button onClick={handleLogout} className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-50 hover:text-red-500" title="Sair"><LogOut className="h-5 w-5" /></button>
+                        </>
+                    ) : <Link to="/login" className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600"><UserCircle className="h-5 w-5" /><span>Entrar</span></Link>}
                 </div>
             </div>
         </header>
