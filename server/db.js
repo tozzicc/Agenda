@@ -42,10 +42,12 @@ export async function initializeDatabase() {
             name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
             description TEXT,
             duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0 AND duration_minutes <= 1440),
+            price NUMERIC(12,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
             active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`);
+        await pool.query('ALTER TABLE services ADD COLUMN IF NOT EXISTS price NUMERIC(12,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0)');
 
         await pool.query(`CREATE TABLE IF NOT EXISTS professional_services (
             professional_id INTEGER NOT NULL REFERENCES professionals(id),
@@ -68,6 +70,7 @@ export async function initializeDatabase() {
         // Nullable references preserve all appointments created before ET-07.
         await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS professional_id INTEGER');
         await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_id INTEGER');
+        await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_price NUMERIC(12,2) CHECK (service_price >= 0)');
         await pool.query(`DO $$
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'appointments_professional_id_fkey' AND conrelid = 'appointments'::regclass) THEN

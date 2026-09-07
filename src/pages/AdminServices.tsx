@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { adminRequest, type Professional, type Service, type ServiceInput } from '../lib/admin-api';
 import { cn } from '../lib/utils';
+import { formatBRL } from '../lib/currency';
 
-const emptyForm: ServiceInput = { name: '', description: '', durationMinutes: 60, active: true };
+const emptyForm: ServiceInput = { name: '', description: '', durationMinutes: 60, price: '0.00', active: true };
 const quickDurations = [15, 30, 45, 60, 90, 120];
 
 export function AdminServices() {
@@ -36,7 +37,7 @@ export function AdminServices() {
 
     useEffect(() => { void loadData(); }, [loadData]);
     const openCreate = () => { setEditing(null); setForm(emptyForm); setError(''); };
-    const openEdit = (service: Service) => { setEditing(service); setForm({ name: service.name, description: service.description || '', durationMinutes: service.duration_minutes, active: service.active }); setError(''); };
+    const openEdit = (service: Service) => { setEditing(service); setForm({ name: service.name, description: service.description || '', durationMinutes: service.duration_minutes, price: service.price, active: service.active }); setError(''); };
     const closeModal = () => { if (!saving) setEditing(undefined); };
 
     const submit = async (event: FormEvent) => {
@@ -45,6 +46,7 @@ export function AdminServices() {
         if (!name) { setError('Informe o nome do serviço.'); return; }
         if (name.length > 120) { setError('O nome deve ter no máximo 120 caracteres.'); return; }
         if (!Number.isInteger(form.durationMinutes) || form.durationMinutes < 1 || form.durationMinutes > 1440) { setError('A duração deve ser um número inteiro entre 1 e 1440 minutos.'); return; }
+        if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(form.price)) { setError('Informe um preço válido com no máximo duas casas decimais.'); return; }
         setSaving(true); setError('');
         try {
             const payload = { ...form, name, description: form.description.trim() };
@@ -62,6 +64,8 @@ export function AdminServices() {
 
     return (
         <AdminCatalogLayout title="Serviços" subtitle="Organize os serviços oferecidos e suas respectivas durações." action={<button onClick={openCreate} disabled={settings.demoMode} className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Novo serviço</button>}>
+            {services.length > 0 && <div className="mb-4 flex flex-wrap gap-2">{services.map((service) => <span key={service.id} className="rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800">{service.name}: {formatBRL(service.price)}</span>)}</div>}
+            {editing !== undefined && <label className="fixed bottom-5 right-5 z-[70] rounded-xl bg-white p-4 text-sm font-medium shadow-2xl">Preço (R$)<input inputMode="decimal" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value.replace(',', '.') })} className="mt-2 block w-40 rounded-lg border border-gray-200 px-3 py-2" /></label>}
             {settings.demoMode && <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Cadastros operacionais não são exibidos nem alterados no modo demonstração. Desative a demo para gerenciá-los.</div>}
             {error && editing === undefined && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
             {loading ? <div className="flex justify-center py-20"><LoaderCircle className="h-7 w-7 animate-spin text-indigo-600" /></div> : services.length === 0 ? (

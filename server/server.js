@@ -106,13 +106,31 @@ async function validateCatalogSelection(serviceIdValue, professionalIdValue) {
     if (await isDemoModeActive()) {
         const service = listDemoServices().find(({ id }) => id === serviceId);
         const professional = listDemoProfessionals(serviceId).find(({ id }) => id === professionalId);
-        return service && professional ? { serviceId, professionalId, durationMinutes: service.duration_minutes } : { error: 'Servico ou profissional indisponivel' };
+        return service && professional ? { serviceId, professionalId, professionalName: professional.name, durationMinutes: service.duration_minutes, price: service.price } : { error: 'Servico ou profissional indisponivel' };
     }
-    const result = await query(`SELECT s.duration_minutes FROM professional_services ps
+    const result = await query(`SELECT p.name AS professional_name, s.duration_minutes, s.price::text AS price FROM professional_services ps
         JOIN services s ON s.id = ps.service_id AND s.active = TRUE
         JOIN professionals p ON p.id = ps.professional_id AND p.active = TRUE
         WHERE ps.service_id = $1 AND ps.professional_id = $2`, [serviceId, professionalId]);
-    return result.rows.length ? { serviceId, professionalId, durationMinutes: result.rows[0].duration_minutes } : { error: 'Servico ou profissional indisponivel' };
+    return result.rows.length ? { serviceId, professionalId, professionalName: result.rows[0].professional_name, durationMinutes: result.rows[0].duration_minutes, price: result.rows[0].price } : { error: 'Servico ou profissional indisponivel' };
+}
+
+async function listCatalogCandidates(serviceIdValue) {
+    const serviceId = parsePositiveId(serviceIdValue);
+    if (!serviceId) return { error: 'Servico invalido' };
+    if (await isDemoModeActive()) {
+        const service = listDemoServices().find(({ id }) => id === serviceId);
+        if (!service) return { error: 'Servico indisponivel' };
+        const professionals = listDemoProfessionals(serviceId).sort((a, b) => a.id - b.id);
+        return { serviceId, durationMinutes: service.duration_minutes, price: service.price, professionals };
+    }
+    const result = await query(`SELECT p.id, p.name, s.duration_minutes, s.price::text AS price
+        FROM professional_services ps
+        JOIN services s ON s.id = ps.service_id AND s.active = TRUE
+        JOIN professionals p ON p.id = ps.professional_id AND p.active = TRUE
+        WHERE ps.service_id = $1 ORDER BY p.id`, [serviceId]);
+    if (!result.rows.length) return { error: 'Servico ou profissional indisponivel' };
+    return { serviceId, durationMinutes: result.rows[0].duration_minutes, price: result.rows[0].price, professionals: result.rows.map(({ id, name }) => ({ id, name })) };
 }
 // --- Auth Routes ---
 
@@ -381,7 +399,7 @@ app.patch('/api/admin/professionals/:id/status', authenticateToken, requireAdmin
 
 app.get('/api/admin/services', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
-        const result = await query('SELECT id, name, description, duration_minutes, active, created_at, updated_at FROM services ORDER BY name, id');
+        const result = await query('SELECT id, name, description, duration_minutes, price::text AS price, active, created_at, updated_at FROM services ORDER BY name, id');
         res.json(result.rows);
     } catch (error) { next(error); }
 });
@@ -391,8 +409,8 @@ app.post('/api/admin/services', authenticateToken, requireAdmin, async (req, res
     if (validation.error) return res.status(400).json({ error: validation.error });
     try {
         if (!await ensureOperationalMode(res)) return;
-        const { name, description, durationMinutes, active } = validation.value;
-        const result = await query('INSERT INTO services (name, description, duration_minutes, active) VALUES ($1, $2, $3, $4) RETURNING *', [name, description, durationMinutes, active]);
+        const { name, description, durationMinutes, price, active } = validation.value;
+        const result = await query('INSERT INTO services (name, description, duration_minutes, price, active) VALUES ($1, $2, $3, $4, $5) RETURNING *', [name, description, durationMinutes, price, active]);
         res.status(201).json(result.rows[0]);
     } catch (error) { next(error); }
 });
@@ -404,8 +422,8 @@ app.put('/api/admin/services/:id', authenticateToken, requireAdmin, async (req, 
     if (validation.error) return res.status(400).json({ error: validation.error });
     try {
         if (!await ensureOperationalMode(res)) return;
-        const { name, description, durationMinutes, active } = validation.value;
-        const result = await query('UPDATE services SET name = $1, description = $2, duration_minutes = $3, active = $4, updated_at = NOW() WHERE id = $5 RETURNING *', [name, description, durationMinutes, active, id]);
+        const { name, description, durationMinutes, price, active } = validation.value;
+        const result = await query('UPDATE services SET name = $1, description = $2, duration_minutes = $3, price = $4, active = $5, updated_at = NOW() WHERE id = $6 RETURNING *', [name, description, durationMinutes, price, active, id]);
         if (!result.rows[0]) return res.status(404).json({ error: 'Serviço não encontrado' });
         res.json(result.rows[0]);
     } catch (error) { next(error); }
@@ -430,7 +448,7 @@ app.get('/api/admin/professionals/:id/services', authenticateToken, requireAdmin
     try {
         const professional = await query('SELECT id FROM professionals WHERE id = $1', [id]);
         if (!professional.rows[0]) return res.status(404).json({ error: 'Profissional não encontrado' });
-        const result = await query('SELECT s.id, s.name, s.description, s.duration_minutes, s.active FROM professional_services ps JOIN services s ON s.id = ps.service_id WHERE ps.professional_id = $1 ORDER BY s.name, s.id', [id]);
+        const result = await query('SELECT s.id, s.name, s.description, s.duration_minutes, s.price, s.active FROM professional_services ps JOIN services s ON s.id = ps.service_id WHERE ps.professional_id = $1 ORDER BY s.name, s.id', [id]);
         res.json(result.rows);
     } catch (error) { next(error); }
 });
@@ -638,7 +656,7 @@ app.post('/api/settings/logo', authenticateToken, upload.single('logo'), async (
 app.get('/api/services', async (req, res, next) => {
     try {
         if (await isDemoModeActive()) return res.json(listDemoServices());
-        const result = await query(`SELECT DISTINCT s.id, s.name, s.description, s.duration_minutes
+        const result = await query(`SELECT DISTINCT s.id, s.name, s.description, s.duration_minutes, s.price::text AS price
             FROM services s JOIN professional_services ps ON ps.service_id = s.id
             JOIN professionals p ON p.id = ps.professional_id
             WHERE s.active = TRUE AND p.active = TRUE ORDER BY s.name, s.id`);
@@ -675,6 +693,15 @@ app.get('/api/services/:serviceId/professionals', async (req, res, next) => {
 app.get('/api/availability', async (req, res, next) => {
     const { date } = req.query;
     try {
+        if (req.query.professional_id === 'any') {
+            const catalog = await listCatalogCandidates(req.query.service_id);
+            if (!date || catalog.error) return res.status(400).json({ error: catalog.error || 'Data obrigatoria' });
+            const demoMode = await isDemoModeActive();
+            const availabilityLists = demoMode
+                ? catalog.professionals.map(({ id }) => listDemoAvailableTimes(date, catalog.durationMinutes, id))
+                : await Promise.all(catalog.professionals.map(({ id }) => listAvailableTimes({ date, durationMinutes: catalog.durationMinutes, professionalId: id })));
+            return res.json([...new Set(availabilityLists.flat())].sort());
+        }
         const catalog = await validateCatalogSelection(req.query.service_id, req.query.professional_id);
         if (!date || catalog.error) return res.status(400).json({ error: catalog.error || 'Data obrigatoria' });
         const demoMode = await isDemoModeActive();
@@ -735,6 +762,29 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
     }
 
     try {
+        if (professional_id === 'any') {
+            const catalog = await listCatalogCandidates(service_id);
+            if (catalog.error) return res.status(400).json({ error: catalog.error });
+            if (await isDemoModeActive()) {
+                const demoResult = createDemoAppointment(req.user, { date, time, name, phone, notes, service_id: catalog.serviceId, professional_id: 'any', email: req.user.email });
+                if (!demoResult.valid) return res.status(demoResult.status).json({ error: demoResult.error });
+                return res.status(201).json({ id: demoResult.appointment.id, professional_id: demoResult.appointment.professional_id, professional_name: demoResult.appointment.professional_name, message: 'Agendamento de demonstracao realizado com sucesso' });
+            }
+            const availability = await validateScheduleAvailability(date, time, catalog.durationMinutes);
+            if (!availability.valid) return res.status(availability.status).json({ error: availability.error });
+            for (const professional of catalog.professionals) {
+                if (await hasAppointmentConflict({ date, time, durationMinutes: catalog.durationMinutes, professionalId: professional.id })) continue;
+                try {
+                    const result = await query('INSERT INTO appointments (user_id, date, time, name, phone, notes, status, service_id, professional_id, service_price) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id', [userId, date, time, name, phone, notes, 'active', catalog.serviceId, professional.id, catalog.price]);
+                    sendBookingConfirmationEmail(req.user.email, { name, date, time, phone, notes }).catch(err => console.error('Error sending confirmation email in route:', err));
+                    return res.status(201).json({ id: result.rows[0].id, professional_id: professional.id, professional_name: professional.name, message: 'Agendamento realizado com sucesso' });
+                } catch (err) {
+                    if (err.code === '23P01' && err.constraint === 'appointments_no_active_overlap') continue;
+                    throw err;
+                }
+            }
+            return res.status(409).json({ error: 'Este horario nao esta mais disponivel' });
+        }
         const catalog = await validateCatalogSelection(service_id, professional_id);
         if (catalog.error) return res.status(400).json({ error: catalog.error });
         if (await isDemoModeActive()) {
@@ -753,15 +803,15 @@ app.post('/api/bookings', authenticateToken, async (req, res, next) => {
         }
 
         const result = await query(
-            'INSERT INTO appointments (user_id, date, time, name, phone, notes, status, service_id, professional_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-            [userId, date, time, name, phone, notes, 'active', catalog.serviceId, catalog.professionalId]
+            'INSERT INTO appointments (user_id, date, time, name, phone, notes, status, service_id, professional_id, service_price) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id',
+            [userId, date, time, name, phone, notes, 'active', catalog.serviceId, catalog.professionalId, catalog.price]
         );
 
         // Send confirmation email asychronously
         sendBookingConfirmationEmail(req.user.email, { name, date, time, phone, notes })
             .catch(err => console.error('Error sending confirmation email in route:', err));
 
-        res.status(201).json({ id: result.rows[0].id, message: 'Agendamento realizado com sucesso' });
+        res.status(201).json({ id: result.rows[0].id, professional_id: catalog.professionalId, professional_name: catalog.professionalName, message: 'Agendamento realizado com sucesso' });
     } catch (err) {
         if (err.code === '23P01' && err.constraint === 'appointments_no_active_overlap') {
             return res.status(409).json({ error: 'Este horário já foi reservado' });
@@ -801,6 +851,7 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
 
         let selectedServiceId = booking.service_id;
         let selectedProfessionalId = booking.professional_id;
+        let selectedServicePrice = booking.service_price;
         let durationMinutes = null;
         if (service_id !== undefined || professional_id !== undefined) {
             const catalog = await validateCatalogSelection(service_id, professional_id);
@@ -808,6 +859,7 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
             selectedServiceId = catalog.serviceId;
             selectedProfessionalId = catalog.professionalId;
             durationMinutes = catalog.durationMinutes;
+            if (Number(booking.service_id) !== catalog.serviceId) selectedServicePrice = catalog.price;
         } else if (selectedServiceId && selectedProfessionalId) {
             const service = await query('SELECT duration_minutes FROM services WHERE id = $1', [selectedServiceId]);
             durationMinutes = service.rows[0]?.duration_minutes;
@@ -826,8 +878,8 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res, next) => {
         }
 
         await query(
-            'UPDATE appointments SET date = $1, time = $2, notes = $3, service_id = $4, professional_id = $5 WHERE id = $6',
-            [date, time, notes, selectedServiceId, selectedProfessionalId, id]
+            'UPDATE appointments SET date = $1, time = $2, notes = $3, service_id = $4, professional_id = $5, service_price = $6 WHERE id = $7',
+            [date, time, notes, selectedServiceId, selectedProfessionalId, selectedServicePrice, id]
         );
         res.json({ message: 'Agendamento atualizado com sucesso' });
     } catch (err) {

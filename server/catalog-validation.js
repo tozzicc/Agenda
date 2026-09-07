@@ -42,9 +42,12 @@ export function validateService(input = {}) {
     if (!Number.isInteger(input.durationMinutes) || input.durationMinutes <= 0 || input.durationMinutes > 1440) {
         return { error: 'Duração deve ser um número inteiro entre 1 e 1440 minutos' };
     }
+    const priceText = typeof input.price === 'number' || typeof input.price === 'string' ? String(input.price) : '';
+    if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(priceText)) return { error: 'Preço deve ser um valor entre 0,00 e 9.999.999.999,99, com no máximo duas casas decimais' };
+    const price = `${priceText.split('.')[0]}.${(priceText.split('.')[1] || '').padEnd(2, '0')}`;
     const active = normalizeActive(input.active);
     if (active.error) return { error: active.error };
-    return { value: { name: name.value, description: description.value, durationMinutes: input.durationMinutes, active: active.value } };
+    return { value: { name: name.value, description: description.value, durationMinutes: input.durationMinutes, price, active: active.value } };
 }
 
 export function validateActiveStatus(input = {}) {

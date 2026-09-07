@@ -69,3 +69,24 @@ test('demo availability uses duration and isolates professionals', () => {
     assert.ok(!listDemoAvailableTimes(date, 60, 1).includes('09:00'));
     assert.ok(!listDemoAvailableTimes(date, 120, 2).includes('11:00'));
 });
+
+test('automatic professional selection is deterministic and retries the next available professional', () => {
+    const date = futureWeekday();
+    const first = createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 'any' });
+    const second = createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 'any' });
+    const unavailable = createDemoAppointment(user, { date, time: '09:00', service_id: 2, professional_id: 'any' });
+
+    assert.equal(first.valid, true);
+    assert.equal(first.appointment.professional_id, 1);
+    assert.equal(second.valid, true);
+    assert.equal(second.appointment.professional_id, 2);
+    assert.equal(unavailable.status, 409);
+});
+
+test('demo appointments snapshot price and only refresh it when service changes', () => {
+    const date = futureWeekday();
+    const created = createDemoAppointment(user, { date, time: '09:00', service_id: 1, professional_id: 1, service_price: '0.01' });
+    assert.equal(created.appointment.service_price, '90.00');
+    assert.equal(updateDemoAppointment(created.appointment.id, user, { date, time: '10:00', professional_id: 1 }).appointment.service_price, '90.00');
+    assert.equal(updateDemoAppointment(created.appointment.id, user, { date, time: '13:00', service_id: 2, professional_id: 2 }).appointment.service_price, '140.00');
+});

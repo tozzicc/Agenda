@@ -9,7 +9,7 @@ interface BookingFormProps {
     selectedDate: Date;
     selectedTime: string;
     serviceId: number;
-    professionalId: number;
+    professionalId: number | 'any';
     serviceName: string;
     professionalName: string;
     onSubmit: (data: BookingData) => void;
@@ -21,6 +21,7 @@ export interface BookingData {
     email: string;
     phone: string;
     notes?: string;
+    assignedProfessionalName?: string;
 }
 
 export function BookingForm({ selectedDate, selectedTime, serviceId, professionalId, serviceName, professionalName, onSubmit, onBack }: BookingFormProps) {
@@ -68,7 +69,8 @@ export function BookingForm({ selectedDate, selectedTime, serviceId, professiona
                 throw new Error(errorData.error || 'Erro ao agendar');
             }
 
-            onSubmit(formData);
+            const result = await response.json();
+            onSubmit({ ...formData, assignedProfessionalName: result.professional_name });
         } catch (error) {
             console.error('Booking error:', error);
             alert('Ocorreu um erro ao realizar o agendamento. Tente novamente.');

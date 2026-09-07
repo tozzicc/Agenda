@@ -8,8 +8,8 @@ export const DEMO_CLIENTS = [
 ];
 
 export const DEMO_SERVICES = [
-    { id: 1, name: 'Avaliacao', description: 'Primeiro atendimento', duration_minutes: 60, active: true },
-    { id: 2, name: 'Consulta', description: 'Atendimento de acompanhamento', duration_minutes: 60, active: true },
+    { id: 1, name: 'Avaliacao', description: 'Primeiro atendimento', duration_minutes: 60, price: '90.00', active: true },
+    { id: 2, name: 'Consulta', description: 'Atendimento de acompanhamento', duration_minutes: 60, price: '140.00', active: true },
 ];
 
 export const DEMO_PROFESSIONALS = [
@@ -23,7 +23,7 @@ export function listDemoServices() {
 
 export function listDemoProfessionals(serviceId) {
     return DEMO_PROFESSIONALS
-        .filter((professional) => !serviceId || professional.service_ids.includes(Number(serviceId)))
+        .filter((professional) => professional.active && (!serviceId || professional.service_ids.includes(Number(serviceId))))
         .map(({ service_ids, ...professional }) => ({ ...professional }));
 }
 
@@ -92,6 +92,7 @@ function createInitialAppointments(now = new Date()) {
             status,
             service_id: service.id,
             service_name: service.name,
+            service_price: service.price,
             professional_id: professional.id,
             professional_name: professional.name,
         };
@@ -164,7 +165,12 @@ export function listDemoAvailableTimes(date, durationMinutes, professionalId, ig
 
 export function createDemoAppointment(user, details) {
     const service = DEMO_SERVICES.find(({ id }) => id === Number(details.service_id));
-    const availability = validateDemoAvailability(details.date, details.time, service?.duration_minutes, details.professional_id);
+    const compatibleProfessionals = listDemoProfessionals(service?.id).sort((a, b) => a.id - b.id);
+    const professional = details.professional_id === 'any'
+        ? compatibleProfessionals.find(({ id }) => validateDemoAvailability(details.date, details.time, service?.duration_minutes, id).valid)
+        : compatibleProfessionals.find(({ id }) => id === Number(details.professional_id));
+    if (!service || !professional) return { valid: false, status: details.professional_id === 'any' ? 409 : 400, error: 'Servico ou profissional indisponivel' };
+    const availability = validateDemoAvailability(details.date, details.time, service.duration_minutes, professional.id);
     if (!availability.valid) return availability;
     const ownerKey = ownerKeyForUser(user);
     const client = DEMO_CLIENTS.find(({ key }) => key === ownerKey);
@@ -181,8 +187,9 @@ export function createDemoAppointment(user, details) {
         status: 'active',
         service_id: Number(details.service_id),
         service_name: DEMO_SERVICES.find(({ id }) => id === Number(details.service_id))?.name,
-        professional_id: Number(details.professional_id),
-        professional_name: DEMO_PROFESSIONALS.find(({ id }) => id === Number(details.professional_id))?.name,
+        service_price: service?.price,
+        professional_id: professional.id,
+        professional_name: professional.name,
     };
     demoAppointments.push(appointment);
     return { valid: true, appointment: { ...appointment } };
@@ -210,8 +217,10 @@ export function updateDemoAppointment(id, user, details) {
     found.appointment.time = details.time;
     found.appointment.notes = details.notes || '';
     if (details.service_id !== undefined) {
+        const changedService = Number(details.service_id) !== found.appointment.service_id;
         found.appointment.service_id = Number(details.service_id);
         found.appointment.service_name = DEMO_SERVICES.find(({ id }) => id === Number(details.service_id))?.name;
+        if (changedService) found.appointment.service_price = service?.price;
     }
     if (details.professional_id !== undefined) {
         found.appointment.professional_id = Number(details.professional_id);

@@ -7,6 +7,7 @@ import { CalendarView } from '../components/CalendarView';
 import { TimeSlots } from '../components/TimeSlots';
 import { cn } from '../lib/utils';
 import type { Professional, Service } from '../lib/admin-api';
+import { formatBRL } from '../lib/currency';
 
 interface Appointment {
     id: number | string;
@@ -19,6 +20,7 @@ interface Appointment {
     service_name: string | null;
     professional_id: number | null;
     professional_name: string | null;
+    service_price: string | null;
     user_name?: string;
     phone?: string;
 }
@@ -210,6 +212,7 @@ export function MyBookings() {
                                     </div>
                                     <p className="mt-2 text-sm text-gray-600"><span className="font-medium">Serviço:</span> {booking.service_name || 'Não informado (registro antigo)'}</p>
                                     <p className="text-sm text-gray-600"><span className="font-medium">Profissional:</span> {booking.professional_name || 'Não informado (registro antigo)'}</p>
+                                    <p className="text-sm text-gray-600"><span className="font-medium">Valor:</span> {booking.service_price === null ? 'Não informado' : formatBRL(booking.service_price)}</p>
                                     {booking.notes && (
                                         <p className="text-gray-500 text-sm mt-2 italic">"{booking.notes}"</p>
                                     )}

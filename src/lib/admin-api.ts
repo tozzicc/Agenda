@@ -12,6 +12,7 @@ export interface Service {
     name: string;
     description: string | null;
     duration_minutes: number;
+    price: string;
     active: boolean;
     created_at?: string;
     updated_at?: string;
@@ -27,6 +28,7 @@ export interface ServiceInput {
     name: string;
     description: string;
     durationMinutes: number;
+    price: string;
     active: boolean;
 }
 

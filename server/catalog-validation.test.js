@@ -11,10 +11,15 @@ test('professional validation requires a bounded name and boolean status', () =>
 
 test('service validation requires a reasonable positive integer duration', () => {
     for (const durationMinutes of [0, -1, 1.5, 1441, undefined]) {
-        assert.match(validateService({ name: 'Consulta', durationMinutes }).error, /Duração/);
+        assert.match(validateService({ name: 'Consulta', durationMinutes, price: '10.00' }).error, /Duração/);
     }
-    assert.equal(validateService({ name: 'Consulta', durationMinutes: 60 }).value.durationMinutes, 60);
-    assert.match(validateService({ name: 'Consulta', durationMinutes: 60, active: 1 }).error, /booleano/);
+    assert.equal(validateService({ name: 'Consulta', durationMinutes: 60, price: '10.00' }).value.durationMinutes, 60);
+    assert.match(validateService({ name: 'Consulta', durationMinutes: 60, price: '10.00', active: 1 }).error, /booleano/);
+});
+
+test('service price is exact, required, non-negative and limited to two decimals', () => {
+    assert.equal(validateService({ name: 'Grátis', durationMinutes: 30, price: 0 }).value.price, '0.00');
+    for (const price of [-1, '1.999', 'abc', '', undefined]) assert.match(validateService({ name: 'Teste', durationMinutes: 30, price }).error, /Preço/);
 });
 
 test('status and route ids reject invalid values', () => {

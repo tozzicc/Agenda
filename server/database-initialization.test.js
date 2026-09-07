@@ -23,6 +23,8 @@ function assertCompleteInitialization(queries) {
     assert.ok(queries.some(({ sql }) => sql.startsWith('CREATE TABLE IF NOT EXISTS appointments')));
     assert.ok(queries.some(({ sql }) => sql === 'ALTER TABLE appointments ADD COLUMN IF NOT EXISTS professional_id INTEGER'));
     assert.ok(queries.some(({ sql }) => sql === 'ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_id INTEGER'));
+    assert.ok(queries.some(({ sql }) => sql.includes('ALTER TABLE services ADD COLUMN IF NOT EXISTS price NUMERIC(12,2)')));
+    assert.ok(queries.some(({ sql }) => sql.includes('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS service_price NUMERIC(12,2)')));
     assert.ok(queries.some(({ sql }) => sql.startsWith('DO ') && sql.includes('appointments_professional_id_fkey') && sql.includes('appointments_service_id_fkey')));
     assert.ok(queries.some(({ sql }) => sql.startsWith('CREATE TABLE IF NOT EXISTS settings')));
     assert.ok(queries.some(({ sql }) => sql === 'DROP INDEX IF EXISTS appointments_active_date_time_unique'));

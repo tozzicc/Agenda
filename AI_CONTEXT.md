@@ -136,3 +136,34 @@ Para desenvolvimento também existem `npm run server` e `npm run dev`.
 - Não foi adicionada biblioteca gráfica: barras responsivas usam React, Tailwind e CSS, mantendo o bundle e a identidade existentes.
 - Verificação da ET-11: `npm test` 43/43 aprovado e ESLint focalizado aprovado; build, audit e `git diff --check` aprovados na validação final.
 - Próxima etapa: não iniciada; aguardar definição explícita.
+
+## 16. ET-12 concluída — preços e base financeira histórica
+
+- `services.price` usa `NUMERIC(12,2) NOT NULL DEFAULT 0.00`; serviços anteriores permanecem intactos e recebem `0.00` pela migração idempotente.
+- `appointments.service_price` usa `NUMERIC(12,2)`, anulável: registros legados permanecem `NULL`, sem inferência retroativa.
+- Na criação, o backend ignora valores monetários do cliente, lê o preço atual junto da associação serviço/profissional e grava a fotografia no appointment.
+- Na edição, data, horário ou profissional preservam a fotografia; troca de serviço atualiza a fotografia com o preço atual do novo serviço.
+- APIs administrativas e públicas de serviços retornam preço; administração, seleção pública, confirmação e listagens exibem BRL via formatador centralizado.
+- Modo demo possui preços fictícios e aplica as mesmas regras de fotografia e edição apenas em memória.
+- Verificação: `npm test` 45/45 aprovado; build, audit, lint focalizado e `git diff --check` aprovados.
+- Próxima etapa planejada: ET-13 — refinamento visual do fluxo público/stepper; não iniciada.
+
+## 17. ET-13 concluída — refinamento visual do fluxo público
+
+- `BookingStepper` reutilizável representa Serviço, Profissional, Data, Horário, Dados e Confirmação com estados concluído, atual e futuro.
+- Desktop/tablet exibem etapas conectadas; mobile usa etapa atual, instrução, percentual e barra de progresso, sem rolagem horizontal.
+- O fluxo invalida data, horário e confirmação ao trocar serviço; voltar/avançar acompanha o estado real sem alterar disponibilidade ou persistência.
+- Cards mantêm nome, descrição, duração e preço; confirmação mostra serviço, profissional, data, horário, duração, valor e cliente.
+- Sem dependências novas. Testes backend preservados; build, audit, lint focalizado e `git diff --check` aprovados.
+- Próxima etapa planejada: ET-14 — evolução financeira do Dashboard; não iniciada.
+
+## 18. Ajuste pós-ET-13 — qualquer profissional e contrato monetário
+
+- O fluxo público oferece “Qualquer profissional disponível” além da seleção específica. O endpoint aceita `professional_id=any` e devolve a união ordenada dos horários em que ao menos um profissional ativo vinculado ao serviço está livre.
+- A duração e o preço continuam vindo exclusivamente do serviço validado no backend. Na criação automática, os profissionais compatíveis são avaliados deterministicamente por ID; conflitos antecipados pulam para o próximo candidato e, se nenhum permanecer disponível, a API responde `409`.
+- A trigger PostgreSQL `appointments_no_active_overlap` permanece como proteção final de concorrência. Se ela detectar que um candidato foi ocupado entre a consulta e o `INSERT`, a criação automática tenta o próximo profissional; nunca persiste o valor sentinela `any`.
+- A resposta de criação informa `professional_id` e `professional_name` reais, e a confirmação pública exibe o profissional efetivamente atribuído. A escolha específica mantém o comportamento anterior.
+- O modo demo aplica a mesma união de disponibilidade, ordem determinística e tentativa do próximo profissional apenas em memória.
+- Contrato monetário: consultas públicas e administrativas serializam `NUMERIC(12,2)` como texto decimal; o formatador BRL aceita somente número finito não negativo ou texto decimal válido e mostra “Não informado” para ausência/legado inválido, impedindo `R$ NaN` sem inventar preço.
+- Registros legados continuam intactos e anuláveis conforme ET-10/ET-12. Verificação final: `npm test` 46/46, build aprovado com o aviso conhecido de chunk, `npm audit` com 0 vulnerabilidades, lint focalizado e `git diff --check` aprovados.
+- ET-14 permanece apenas planejada e não foi iniciada.

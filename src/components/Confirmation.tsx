@@ -2,6 +2,7 @@ import { CheckCircle, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { type BookingData } from './BookingForm';
+import { formatBRL } from '../lib/currency';
 
 interface ConfirmationProps {
     selectedDate: Date;
@@ -9,10 +10,12 @@ interface ConfirmationProps {
     bookingData: BookingData;
     serviceName: string;
     professionalName: string;
+    servicePrice: string;
+    serviceDuration: number;
     onReset: () => void;
 }
 
-export function Confirmation({ selectedDate, selectedTime, bookingData, serviceName, professionalName, onReset }: ConfirmationProps) {
+export function Confirmation({ selectedDate, selectedTime, bookingData, serviceName, professionalName, servicePrice, serviceDuration, onReset }: ConfirmationProps) {
     return (
         <div className="text-center animate-in zoom-in-95 duration-500">
             <div className="flex justify-center mb-6">
@@ -38,6 +41,8 @@ export function Confirmation({ selectedDate, selectedTime, bookingData, serviceN
                 <div className="space-y-2 text-sm">
                     <div className="flex justify-between gap-4"><span className="text-gray-500">Servico</span><span className="font-medium text-gray-900 text-right">{serviceName}</span></div>
                     <div className="flex justify-between gap-4"><span className="text-gray-500">Profissional</span><span className="font-medium text-gray-900 text-right">{professionalName}</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-gray-500">Valor</span><span className="font-medium text-indigo-700">{formatBRL(servicePrice)}</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-gray-500">Duração</span><span className="font-medium text-gray-900">{serviceDuration} min</span></div>
                     <div className="flex justify-between">
                         <span className="text-gray-500">Nome</span>
                         <span className="font-medium text-gray-900">{bookingData.name}</span>

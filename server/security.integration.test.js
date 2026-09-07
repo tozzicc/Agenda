@@ -22,7 +22,7 @@ let demoMode = false;
 nodemailer.createTransport = () => ({ sendMail: async (options) => { sentMail.push(options); return { response: 'ok' }; } });
 pg.Pool.prototype.query = async function (sql, params = []) {
     const normalized = sql.replace(/\s+/g, ' ').trim();
-    if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE UNIQUE INDEX') || normalized.startsWith('CREATE OR REPLACE FUNCTION') || normalized.startsWith('CREATE TRIGGER') || normalized.startsWith('DROP INDEX') || normalized.startsWith('DROP TRIGGER') || normalized.startsWith('ALTER TABLE appointments') || normalized.startsWith('DO ')) return { rows: [], rowCount: 0 };
+    if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE UNIQUE INDEX') || normalized.startsWith('CREATE OR REPLACE FUNCTION') || normalized.startsWith('CREATE TRIGGER') || normalized.startsWith('DROP INDEX') || normalized.startsWith('DROP TRIGGER') || normalized.startsWith('ALTER TABLE appointments') || normalized.startsWith('ALTER TABLE services') || normalized.startsWith('DO ')) return { rows: [], rowCount: 0 };
     if (normalized.startsWith('INSERT INTO settings')) {
         if (params[0] === 'company_name' && normalized.includes('DO UPDATE')) configuredCompanyName = params[1];
         if (params[0] === 'demo_mode' && normalized.includes('DO UPDATE')) demoMode = params[1] === 'true';
@@ -36,9 +36,9 @@ pg.Pool.prototype.query = async function (sql, params = []) {
     if (normalized.startsWith('INSERT INTO professionals')) { const item = { id: professionals.length + 1, name: params[0], specialty: params[1], active: params[2] }; professionals.push(item); return { rows: [item], rowCount: 1 }; }
     if (normalized.startsWith('UPDATE professionals SET name')) { const item = professionals.find((entry) => entry.id === params[3]); if (!item) return { rows: [], rowCount: 0 }; Object.assign(item, { name: params[0], specialty: params[1], active: params[2] }); return { rows: [item], rowCount: 1 }; }
     if (normalized.startsWith('UPDATE professionals SET active')) { const item = professionals.find((entry) => entry.id === params[1]); if (!item) return { rows: [], rowCount: 0 }; item.active = params[0]; return { rows: [item], rowCount: 1 }; }
-    if (normalized.startsWith('SELECT id, name, description, duration_minutes, active, created_at, updated_at FROM services')) return { rows: [...services] };
-    if (normalized.startsWith('INSERT INTO services')) { const item = { id: services.length + 1, name: params[0], description: params[1], duration_minutes: params[2], active: params[3] }; services.push(item); return { rows: [item], rowCount: 1 }; }
-    if (normalized.startsWith('UPDATE services SET name')) { const item = services.find((entry) => entry.id === params[4]); if (!item) return { rows: [], rowCount: 0 }; Object.assign(item, { name: params[0], description: params[1], duration_minutes: params[2], active: params[3] }); return { rows: [item], rowCount: 1 }; }
+    if (normalized.startsWith('SELECT id, name, description, duration_minutes, price::text AS price, active')) return { rows: [...services] };
+    if (normalized.startsWith('INSERT INTO services')) { const item = { id: services.length + 1, name: params[0], description: params[1], duration_minutes: params[2], price: params[3], active: params[4] }; services.push(item); return { rows: [item], rowCount: 1 }; }
+    if (normalized.startsWith('UPDATE services SET name')) { const item = services.find((entry) => entry.id === params[5]); if (!item) return { rows: [], rowCount: 0 }; Object.assign(item, { name: params[0], description: params[1], duration_minutes: params[2], price: params[3], active: params[4] }); return { rows: [item], rowCount: 1 }; }
     if (normalized.startsWith('UPDATE services SET active')) { const item = services.find((entry) => entry.id === params[1]); if (!item) return { rows: [], rowCount: 0 }; item.active = params[0]; return { rows: [item], rowCount: 1 }; }
     if (normalized === 'SELECT id FROM professionals WHERE id = $1') return { rows: professionals.filter((entry) => entry.id === params[0]).map(({ id }) => ({ id })) };
     if (normalized === 'SELECT id FROM services WHERE id = $1') return { rows: services.filter((entry) => entry.id === params[0]).map(({ id }) => ({ id })) };
@@ -149,10 +149,10 @@ test('admin manages professionals, services and many-to-many associations', asyn
     assert.equal(professionals[0].active, false);
 
     assert.equal((await post('/api/admin/services', { name: 'Inválido', durationMinutes: 0 }, adminToken)).status, 400);
-    const createdServiceResponse = await post('/api/admin/services', { name: 'Massagem', description: 'Sessão', durationMinutes: 60 }, adminToken);
+    const createdServiceResponse = await post('/api/admin/services', { name: 'Massagem', description: 'Sessão', durationMinutes: 60, price: '80.00' }, adminToken);
     assert.equal(createdServiceResponse.status, 201);
     const service = await createdServiceResponse.json();
-    assert.equal((await put(`/api/admin/services/${service.id}`, { name: 'Massagem relaxante', description: 'Sessão completa', durationMinutes: 90, active: true }, adminToken)).status, 200);
+    assert.equal((await put(`/api/admin/services/${service.id}`, { name: 'Massagem relaxante', description: 'Sessão completa', durationMinutes: 90, price: '100.00', active: true }, adminToken)).status, 200);
     assert.equal((await patch(`/api/admin/services/${service.id}/status`, { active: false }, adminToken)).status, 200);
     assert.equal(services[0].active, false);
 

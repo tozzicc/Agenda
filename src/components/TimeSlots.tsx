@@ -9,7 +9,7 @@ interface TimeSlotsProps {
     selectedTime: string | null;
     onSelectTime: (time: string) => void;
     serviceId: number | null;
-    professionalId: number | null;
+    professionalId: number | 'any' | null;
     ignoredAppointmentId?: number | string;
 }
 
